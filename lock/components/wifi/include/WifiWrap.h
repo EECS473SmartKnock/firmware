@@ -26,7 +26,7 @@ class WifiWrap {
 
         void disconnect();
 
-        void wifi_scan_networks(char* target_ssid, size_t target_ssid_len);
+        void wifi_scan_networks(char* target_ssid);
 
         void connection_check();
     private:

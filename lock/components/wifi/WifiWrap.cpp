@@ -45,10 +45,15 @@ void WifiWrap::connect(const WifiPassHeader& header)
 
     // Initialize and start WiFi
     wifi_config_t wifi_config;
-    memcpy((uint8_t*) wifi_config.sta.ssid, header.ssid, header.ssid_len);
-    memcpy((uint8_t*) wifi_config.sta.password, header.password, header.password_len);
+    memset(&wifi_config, 0, sizeof(wifi_config_t));
+    strcpy((char*)wifi_config.sta.ssid, header.ssid);
+    strcpy((char*)wifi_config.sta.password, header.password);
+
     wifi_config.sta.threshold.authmode = MINIMUM_AUTHMODE;
     wifi_config.sta.sort_method = DEFAULT_SORT_METHOD;
+
+    ESP_LOGI(TAG, "wifi_init_sta finished.");
+
 
     wifi_config.sta.pmf_cfg = {
         .capable = true,
@@ -74,11 +79,11 @@ void WifiWrap::connect(const WifiPassHeader& header)
     ESP_LOGI(TAG, "wifi_init_sta finished.");
 
     // Scan and block until target wifi ssid is found
-    wifi_scan_networks(header.ssid, header.ssid_len);
+    wifi_scan_networks((char*)wifi_config.sta.ssid);
 
     ESP_ERROR_CHECK(esp_wifi_connect());
     ESP_LOGI(TAG, " connecting to ap SSID:%s password:%s",
-                 header.ssid, header.password);
+                 wifi_config.sta.ssid, wifi_config.sta.password);
 
     EventBits_t bits = xEventGroupWaitBits(s_wifi_event_group,
             WIFI_CONNECTED_BIT | WIFI_FAIL_BIT,
@@ -99,8 +104,8 @@ void WifiWrap::connect(const WifiPassHeader& header)
     }
 
     /* The event will not be processed after unregister */
-    ESP_ERROR_CHECK(esp_event_handler_instance_unregister(IP_EVENT, IP_EVENT_STA_GOT_IP, NULL));
-    ESP_ERROR_CHECK(esp_event_handler_instance_unregister(WIFI_EVENT, ESP_EVENT_ANY_ID, NULL));
+    ESP_ERROR_CHECK(esp_event_handler_instance_unregister(IP_EVENT, IP_EVENT_STA_GOT_IP, instance_any_id));
+    ESP_ERROR_CHECK(esp_event_handler_instance_unregister(WIFI_EVENT, ESP_EVENT_ANY_ID, instance_got_ip));
     vEventGroupDelete(s_wifi_event_group);
 }
 
@@ -123,6 +128,8 @@ void WifiWrap::wifi_event_handler(void* arg, esp_event_base_t event_base,
     if (event_base == WIFI_EVENT && event_id == WIFI_EVENT_STA_START) {
         ESP_LOGI(TAG, " scanning for APs...");
     } else if (event_base == WIFI_EVENT && event_id == WIFI_EVENT_STA_DISCONNECTED) {
+        wifi_event_sta_disconnected_t* event = ((wifi_event_sta_disconnected_t*)event_data);
+        ESP_LOGI(TAG, "disconnected, reason: %d", event->reason);
         if (s_retry_num < EXAMPLE_ESP_MAXIMUM_RETRY) {
             esp_wifi_connect();
             s_retry_num++;
@@ -224,7 +231,7 @@ static void print_cipher_type(int pairwise_cipher, int group_cipher)
 }
 
 /* Blocks with wifi scan until network is found */
-void WifiWrap::wifi_scan_networks(char* target_ssid, size_t target_ssid_len)
+void WifiWrap::wifi_scan_networks(char* target_ssid)
 {
     //AP info
     uint16_t number = DEFAULT_SCAN_LIST_SIZE;
