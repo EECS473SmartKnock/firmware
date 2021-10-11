@@ -1,6 +1,8 @@
 #include <stdio.h>
 #include "nvs_flash.h"
 #include "WifiWrap.h"
+#include "SmartKnockAPI.h"
+#include "freertos/FreeRTOS.h"
 
 extern "C" {
     void app_main();
@@ -16,14 +18,17 @@ void app_main()
     ESP_ERROR_CHECK( ret );
 
     WifiWrap wifiwrapper;
-    char network_name[] = "LigmaSugma";
-    char password[] = "VirginHostSheet420";
+    char network_name[] = "HOME-E926-2.4";
+    char password[] = "chose1583fasten";
     WifiPassHeader header{  network_name, strlen(network_name),
                             password, strlen(password)};
 
     wifiwrapper.connect(header);
+
+    SmartKnockAPI api;
+        api.send_message(LockMessage());
     for(;;) 
     {
-
+        vTaskDelay(10);
     }
 }
