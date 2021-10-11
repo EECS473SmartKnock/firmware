@@ -274,5 +274,4 @@ void WifiWrap::wifi_scan_networks(char* target_ssid)
             }
         }
     }
-    return target_record;
 }
