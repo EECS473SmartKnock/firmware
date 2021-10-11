@@ -16,8 +16,12 @@ void app_main()
     ESP_ERROR_CHECK( ret );
 
     WifiWrap wifiwrapper;
+    char network_name[] = "ArthurZhang";
+    char password[] = "arthurthesoccerball";
+    WifiPassHeader header{  network_name, strlen(network_name),
+                            password, strlen(password)};
 
-    wifiwrapper.connect();
+    wifiwrapper.connect(header);
     for(;;) 
     {
 

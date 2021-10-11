@@ -1,3 +1,4 @@
+#include <string.h>
 #include "esp_wifi.h"
 #include "esp_system.h"
 #include "esp_event.h"
@@ -9,15 +10,25 @@ extern "C" {
 #define MAX_SSID_SIZE						32
 #define MAX_PASSWORD_SIZE					64
 
+struct WifiPassHeader {
+    char* ssid;
+    size_t ssid_len;
+
+    char* password;
+    size_t password_len;
+};
+
 class WifiWrap {
     public:
         WifiWrap();
 
-        void connect();
+        void connect(const WifiPassHeader& header);
 
-        esp_err_t disconnect();
+        void disconnect();
 
-        void wifi_scan_networks(uint16_t *number, wifi_ap_record_t *ap_records);
+        void wifi_scan_networks(char* target_ssid, size_t target_ssid_len);
+
+        void connection_check();
     private:
         static void wifi_event_handler(void* arg, esp_event_base_t event_base,
                                 int32_t event_id, void* event_data);
