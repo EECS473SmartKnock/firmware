@@ -43,18 +43,10 @@ void WifiWrap::connect(const WifiPassHeader& header)
     wifi_init_config_t cfg = WIFI_INIT_CONFIG_DEFAULT();
     ESP_ERROR_CHECK(esp_wifi_init(&cfg));
 
-    ESP_ERROR_CHECK(esp_wifi_set_mode(WIFI_MODE_STA));
-    ESP_ERROR_CHECK(esp_wifi_start());
-
-    // Scan and block until target wifi ssid is found
-    wifi_scan_networks(header.ssid, header.ssid_len);
-
     // Initialize and start WiFi
     wifi_config_t wifi_config;
     memcpy((uint8_t*) wifi_config.sta.ssid, header.ssid, header.ssid_len);
     memcpy((uint8_t*) wifi_config.sta.password, header.password, header.password_len);
-    ESP_LOGI(TAG, "connecting to ap SSID:%s password:%s",
-                 header.ssid, header.password);
     wifi_config.sta.threshold.authmode = MINIMUM_AUTHMODE;
     wifi_config.sta.sort_method = DEFAULT_SORT_METHOD;
 
@@ -62,7 +54,31 @@ void WifiWrap::connect(const WifiPassHeader& header)
         .capable = true,
         .required = false
     };
+
+    esp_event_handler_instance_t instance_any_id;
+    esp_event_handler_instance_t instance_got_ip;
+    ESP_ERROR_CHECK(esp_event_handler_instance_register(WIFI_EVENT,
+                                                        ESP_EVENT_ANY_ID,
+                                                        &wifi_event_handler,
+                                                        NULL,
+                                                        &instance_any_id));
+    ESP_ERROR_CHECK(esp_event_handler_instance_register(IP_EVENT,
+                                                        IP_EVENT_STA_GOT_IP,
+                                                        &wifi_event_handler,
+                                                        NULL,
+                                                        &instance_got_ip));
+
+    ESP_ERROR_CHECK(esp_wifi_set_mode(WIFI_MODE_STA));
+    ESP_ERROR_CHECK(esp_wifi_set_config(WIFI_IF_STA, &wifi_config) );
+    ESP_ERROR_CHECK(esp_wifi_start());
     ESP_LOGI(TAG, "wifi_init_sta finished.");
+
+    // Scan and block until target wifi ssid is found
+    wifi_scan_networks(header.ssid, header.ssid_len);
+
+    ESP_ERROR_CHECK(esp_wifi_connect());
+    ESP_LOGI(TAG, " connecting to ap SSID:%s password:%s",
+                 header.ssid, header.password);
 
     EventBits_t bits = xEventGroupWaitBits(s_wifi_event_group,
             WIFI_CONNECTED_BIT | WIFI_FAIL_BIT,
@@ -105,8 +121,7 @@ void WifiWrap::wifi_event_handler(void* arg, esp_event_base_t event_base,
     static int s_retry_num = 0;
 
     if (event_base == WIFI_EVENT && event_id == WIFI_EVENT_STA_START) {
-        ESP_ERROR_CHECK(esp_wifi_connect());
-        ESP_LOGI(TAG, " connected to AP");
+        ESP_LOGI(TAG, " scanning for APs...");
     } else if (event_base == WIFI_EVENT && event_id == WIFI_EVENT_STA_DISCONNECTED) {
         if (s_retry_num < EXAMPLE_ESP_MAXIMUM_RETRY) {
             esp_wifi_connect();
