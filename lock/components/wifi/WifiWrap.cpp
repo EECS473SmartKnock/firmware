@@ -2,7 +2,6 @@
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
 #include "freertos/event_groups.h"
-#include "esp_wifi_types.h"
 #include "esp_log.h"
 #include "esp_netif.h"
 #include "WifiWrap.h"
@@ -10,7 +9,7 @@
 #define DEFAULT_SCAN_METHOD WIFI_ALL_CHANNEL_SCAN
 #define DEFAULT_SORT_METHOD WIFI_CONNECT_AP_BY_SECURITY
 #define DEFAULT_RSSI 1
-#define MINIMUM_AUTHMODE WIFI_AUTH_OPEN
+#define MINIMUM_AUTHMODE WIFI_AUTH_WPA2_PSK
 #define EXAMPLE_ESP_MAXIMUM_RETRY  40
 
 #define DEFAULT_SCAN_LIST_SIZE 10
@@ -47,13 +46,22 @@ void WifiWrap::connect(const WifiPassHeader& header)
     wifi_config_t wifi_config;
     memcpy((uint8_t*) wifi_config.sta.ssid, header.ssid, header.ssid_len);
     memcpy((uint8_t*) wifi_config.sta.password, header.password, header.password_len);
-    wifi_config.sta.threshold.authmode = MINIMUM_AUTHMODE;
-    wifi_config.sta.sort_method = DEFAULT_SORT_METHOD;
-
+    ESP_LOGI(TAG, " wifi ssid %s, password %s ", (char *) wifi_config.sta.ssid, 
+            (char *) wifi_config.sta.password);
+    // wifi_config.sta.scan_method = WIFI_FAST_SCAN;
+    // wifi_config.sta.bssid_set = false;
+    // wifi_config.sta.bssid = NULL;
+    // wifi_config.sta.channel = 0; // search through all channels
+    // wifi_config.sta.listen_interval = 0;
+    // wifi_config.sta.sort_method = DEFAULT_SORT_METHOD;
+    // wifi_config.sta.threshold.rssi = 0;     // all rssis are valid
+    wifi_config.sta.threshold.authmode = MINIMUM_AUTHMODE;  // minimum allowed auth mode protocol
     wifi_config.sta.pmf_cfg = {
         .capable = true,
         .required = false
     };
+    // wifi_config.sta.rm_enabled = true;
+    // wifi_config.sta.btm_enabled = true;
 
     esp_event_handler_instance_t instance_any_id;
     esp_event_handler_instance_t instance_got_ip;
@@ -69,14 +77,18 @@ void WifiWrap::connect(const WifiPassHeader& header)
                                                         &instance_got_ip));
 
     ESP_ERROR_CHECK(esp_wifi_set_mode(WIFI_MODE_STA));
-    ESP_ERROR_CHECK(esp_wifi_set_config(WIFI_IF_STA, &wifi_config) );
+    ESP_ERROR_CHECK(esp_wifi_set_config(WIFI_IF_STA, &wifi_config));
     ESP_ERROR_CHECK(esp_wifi_start());
-    ESP_LOGI(TAG, "wifi_init_sta finished.");
 
     // Scan and block until target wifi ssid is found
-    wifi_scan_networks(header.ssid, header.ssid_len);
+    // wifi_ap_record_t target_ap_record = wifi_scan_networks(header.ssid, header.ssid_len);
+    // wifi_config.sta.bssid_set = false;
+    // // memcpy(wifi_config.sta.bssid, target_ap_record.bssid, sizeof(target_ap_record.bssid)/sizeof(target_ap_record.bssid[0]));
+    // // ESP_LOGI(TAG, " wifi ap bssid %s", target_ap_record.bssid);
+    // wifi_config.sta.channel = target_ap_record.primary;
+    // ESP_ERROR_CHECK(esp_wifi_start());
+    ESP_LOGI(TAG, "wifi_init_sta finished.");
 
-    ESP_ERROR_CHECK(esp_wifi_connect());
     ESP_LOGI(TAG, " connecting to ap SSID:%s password:%s",
                  header.ssid, header.password);
 
@@ -121,11 +133,14 @@ void WifiWrap::wifi_event_handler(void* arg, esp_event_base_t event_base,
     static int s_retry_num = 0;
 
     if (event_base == WIFI_EVENT && event_id == WIFI_EVENT_STA_START) {
+        esp_wifi_connect();
         ESP_LOGI(TAG, " scanning for APs...");
     } else if (event_base == WIFI_EVENT && event_id == WIFI_EVENT_STA_DISCONNECTED) {
         if (s_retry_num < EXAMPLE_ESP_MAXIMUM_RETRY) {
             esp_wifi_connect();
             s_retry_num++;
+            wifi_event_sta_disconnected_t disconnect = *(static_cast<wifi_event_sta_disconnected_t*>(event_data));
+            ESP_LOGI(TAG, "disconnect reason %i ", disconnect.reason);
             ESP_LOGI(TAG, "retry to connect to the AP");
         } else {
             xEventGroupSetBits(s_wifi_event_group, WIFI_FAIL_BIT);
@@ -224,7 +239,7 @@ static void print_cipher_type(int pairwise_cipher, int group_cipher)
 }
 
 /* Blocks with wifi scan until network is found */
-void WifiWrap::wifi_scan_networks(char* target_ssid, size_t target_ssid_len)
+wifi_ap_record_t WifiWrap::wifi_scan_networks(char* target_ssid, size_t target_ssid_len)
 {
     //AP info
     uint16_t number = DEFAULT_SCAN_LIST_SIZE;
@@ -234,6 +249,8 @@ void WifiWrap::wifi_scan_networks(char* target_ssid, size_t target_ssid_len)
 
     bool isNetworkFound = false;
     uint8_t channel_number = 0; // Scans all channels
+
+    wifi_ap_record_t target_record;
     while (!isNetworkFound) {
         wifi_scan_config_t scan_config = {
             nullptr,
@@ -241,13 +258,14 @@ void WifiWrap::wifi_scan_networks(char* target_ssid, size_t target_ssid_len)
             channel_number,
             false,
             WIFI_SCAN_TYPE_ACTIVE,
-            wifi_scan_time_t{wifi_active_scan_time_t{500, 1400}, 1400}
+            wifi_scan_time_t{wifi_active_scan_time_t{500, 1500}, 1500}
         };
         esp_wifi_scan_start(&scan_config, true);
         ESP_ERROR_CHECK(esp_wifi_scan_get_ap_records(&number, ap_info));
         ESP_ERROR_CHECK(esp_wifi_scan_get_ap_num(&ap_count));
         ESP_LOGI(TAG, "Total APs scanned = %u", ap_count);
         for (int i = 0; (i < DEFAULT_SCAN_LIST_SIZE) && (i < ap_count); i++) {
+            ESP_LOGI(TAG, "BSSID \t\t%s", ap_info[i].bssid);
             ESP_LOGI(TAG, "SSID \t\t%s", ap_info[i].ssid);
             ESP_LOGI(TAG, "RSSI \t\t%d", ap_info[i].rssi);
             print_auth_mode(ap_info[i].authmode);
@@ -258,9 +276,9 @@ void WifiWrap::wifi_scan_networks(char* target_ssid, size_t target_ssid_len)
 
             if (strcmp(target_ssid, (char *) ap_info[i].ssid)==0) {
                 isNetworkFound = true;
+                target_record = ap_info[i];
             }
         }
     }
-
-
+    return target_record;
 }

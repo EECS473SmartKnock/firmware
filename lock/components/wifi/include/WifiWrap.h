@@ -1,5 +1,6 @@
 #include <string.h>
 #include "esp_wifi.h"
+#include "esp_wifi_types.h"
 #include "esp_system.h"
 #include "esp_event.h"
 
@@ -26,7 +27,7 @@ class WifiWrap {
 
         void disconnect();
 
-        void wifi_scan_networks(char* target_ssid, size_t target_ssid_len);
+        wifi_ap_record_t wifi_scan_networks(char* target_ssid, size_t target_ssid_len);
 
         void connection_check();
     private:

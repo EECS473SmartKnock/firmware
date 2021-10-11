@@ -16,8 +16,8 @@ void app_main()
     ESP_ERROR_CHECK( ret );
 
     WifiWrap wifiwrapper;
-    char network_name[] = "ArthurZhang";
-    char password[] = "arthurthesoccerball";
+    char network_name[] = "LigmaSugma";
+    char password[] = "VirginHostSheet420";
     WifiPassHeader header{  network_name, strlen(network_name),
                             password, strlen(password)};
 
