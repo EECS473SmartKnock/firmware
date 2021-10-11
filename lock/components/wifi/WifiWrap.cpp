@@ -79,7 +79,7 @@ void WifiWrap::connect(const WifiPassHeader& header)
     ESP_ERROR_CHECK(esp_wifi_start());
 
     // Scan and block until target wifi ssid is found
-    wifi_scan_networks((char*)wifi_config.sta.ssid);
+    // wifi_scan_networks((char*)wifi_config.sta.ssid);
 
     ESP_LOGI(TAG, " connecting to ap SSID:%s password:%s",
                  wifi_config.sta.ssid, wifi_config.sta.password);

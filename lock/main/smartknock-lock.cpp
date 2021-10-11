@@ -24,6 +24,7 @@ void app_main()
     wifiwrapper.connect(header);
     for(;;) 
     {
-
+        // Block for 10ms to give idle task handler enough time to reset watchdog
+        vTaskDelay(10 / portTICK_PERIOD_MS);
     }
 }
