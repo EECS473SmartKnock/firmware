@@ -29,6 +29,7 @@ void app_main()
         api.send_message(LockMessage());
     for(;;) 
     {
-        vTaskDelay(10);
+        // Block for 10ms to give idle task handler enough time to reset watchdog
+        vTaskDelay(10 / portTICK_PERIOD_MS);
     }
 }
