@@ -1,5 +1,6 @@
 #include "SmartKnockAPI.h"
 
+#include <stdio.h>
 #include "esp_log.h"
 #include "esp_netif.h"
 #include "freertos/FreeRTOS.h"
@@ -59,7 +60,7 @@ esp_err_t SmartKnockAPI::_http_event_handler(esp_http_client_event_t *evt) {
             if (!esp_http_client_is_chunked_response(evt->client)) {
                 // If user_data buffer is configured, copy the response into the buffer
                 if (evt->user_data) {
-                    memcpy(evt->user_data + output_len, evt->data, evt->data_len);
+                    memcpy((char*) evt->user_data + output_len, evt->data, evt->data_len);
                 } else {
                     if (output_buffer == NULL) {
                         output_buffer = (char *)malloc(
@@ -89,7 +90,7 @@ esp_err_t SmartKnockAPI::_http_event_handler(esp_http_client_event_t *evt) {
             break;
         case HTTP_EVENT_DISCONNECTED:
             ESP_LOGI(TAG, "HTTP_EVENT_DISCONNECTED");
-            int mbedtls_err = 0;
+            // int mbedtls_err = 0;
             // esp_err_t err = esp_tls_get_and_clear_last_error(evt->data, &mbedtls_err,
             // NULL); if (err != 0) {
             //     if (output_buffer != NULL) {

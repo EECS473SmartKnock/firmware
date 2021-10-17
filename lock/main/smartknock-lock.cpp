@@ -18,15 +18,15 @@ void app_main()
     ESP_ERROR_CHECK( ret );
 
     WifiWrap wifiwrapper;
-    char network_name[] = "HOME-E926-2.4";
-    char password[] = "chose1583fasten";
+    char network_name[] = "LigmaSugma";
+    char password[] = "VirginHostSheet420";
     WifiPassHeader header{  network_name, strlen(network_name),
                             password, strlen(password)};
-
+ 
     wifiwrapper.connect(header);
 
     SmartKnockAPI api;
-        api.send_message(LockMessage());
+    api.send_message(LockMessage());
     for(;;) 
     {
         // Block for 10ms to give idle task handler enough time to reset watchdog
