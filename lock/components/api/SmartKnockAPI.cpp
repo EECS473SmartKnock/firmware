@@ -1,6 +1,7 @@
 #include "SmartKnockAPI.h"
 
 #include <stdio.h>
+
 #include "esp_log.h"
 #include "esp_netif.h"
 #include "freertos/FreeRTOS.h"
@@ -9,27 +10,61 @@
 
 #define TAG "api"
 
-void SmartKnockAPI::send_message(const LockMessage &msg) {
-    char local_response_buffer[1024] = {0};
+MessageType SmartKnockAPI::get_incoming_message() {
+    std::string url = SmartKnockAPI::api_base_url;
+    uint8_t mac_address[6];
+    char hex_address[64];
+    ESP_ERROR_CHECK(esp_efuse_mac_get_default(mac_address));
+    for (int i = 0; i < 6; i++) sprintf(&hex_address[i * 2], "%02x", mac_address[i]);
+    ESP_LOGI(TAG, "mac address: %s", hex_address);
+
+    url += hex_address;
+    url += "?format=spaces";
+    // ESP_LOGI(TAG, "url: %s", url.c_str());
+    auto result = make_http_get_request(url.c_str());
+    // ESP_LOGI(TAG, "got: %s", result.c_str());
+
+    std::istringstream response(result);
+    int message_id;
+    std::string type;
+    while (response >> message_id >> type) {
+        if (message_id > last_consumed_message_id) {
+            last_consumed_message_id = message_id;
+            if (type == "LOCK") {
+                return MessageType::LOCK;
+            } else if (type == "UNLOCK") {
+                return MessageType::UNLOCK;
+            }
+        }
+    }
+
+    return MessageType::NONE;
+}
+
+void SmartKnockAPI::send_message(const LockMessage &msg) {}
+
+std::string SmartKnockAPI::make_http_get_request(const char *url) {
+    char local_response_buffer[SmartKnockAPI::http_response_max_size] = {0};
 
     esp_http_client_config_t config{};
-    config.url = "http://icanhazip.com/";
+    config.url = url;
     config.event_handler = _http_event_handler;
     config.user_data = local_response_buffer;
 
     esp_http_client_handle_t client = esp_http_client_init(&config);
 
-    // GET
+    // GET request
     esp_err_t err = esp_http_client_perform(client);
     if (err == ESP_OK) {
-        ESP_LOGI(TAG, "HTTP GET Status = %d, content_length = %d",
-                 esp_http_client_get_status_code(client),
-                 esp_http_client_get_content_length(client));
+        // ESP_LOGI(TAG, "HTTP GET Status = %d, content_length = %d",
+        //          esp_http_client_get_status_code(client),
+        //          esp_http_client_get_content_length(client));
     } else {
         ESP_LOGE(TAG, "HTTP GET request failed: %s", esp_err_to_name(err));
     }
-    ESP_LOGI(TAG, "Received: %s", local_response_buffer);
-    ESP_LOG_BUFFER_HEX(TAG, local_response_buffer, strlen(local_response_buffer));
+    // ESP_LOGI(TAG, "Received: %s", local_response_buffer);
+    // ESP_LOG_BUFFER_HEX(TAG, local_response_buffer, strlen(local_response_buffer));
+    return local_response_buffer;
 }
 
 esp_err_t SmartKnockAPI::_http_event_handler(esp_http_client_event_t *evt) {
@@ -60,7 +95,7 @@ esp_err_t SmartKnockAPI::_http_event_handler(esp_http_client_event_t *evt) {
             if (!esp_http_client_is_chunked_response(evt->client)) {
                 // If user_data buffer is configured, copy the response into the buffer
                 if (evt->user_data) {
-                    memcpy((char*) evt->user_data + output_len, evt->data, evt->data_len);
+                    memcpy((char *)evt->user_data + output_len, evt->data, evt->data_len);
                 } else {
                     if (output_buffer == NULL) {
                         output_buffer = (char *)malloc(
