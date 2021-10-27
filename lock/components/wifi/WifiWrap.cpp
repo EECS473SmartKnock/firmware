@@ -36,8 +36,8 @@ void WifiWrap::connect(const WifiPassHeader& header)
     // Set up device as station
     ESP_ERROR_CHECK(esp_netif_init());
     ESP_ERROR_CHECK(esp_event_loop_create_default());
-    esp_netif_t *sta_netif = esp_netif_create_default_wifi_sta();
-    assert(sta_netif);
+    sta_netif_ = esp_netif_create_default_wifi_sta();
+    assert(sta_netif_);
 
     wifi_init_config_t cfg = WIFI_INIT_CONFIG_DEFAULT();
     ESP_ERROR_CHECK(esp_wifi_init(&cfg));
@@ -61,18 +61,16 @@ void WifiWrap::connect(const WifiPassHeader& header)
     // wifi_config.sta.rm_enabled = true;
     // wifi_config.sta.btm_enabled = true;
 
-    esp_event_handler_instance_t instance_any_id;
-    esp_event_handler_instance_t instance_got_ip;
     ESP_ERROR_CHECK(esp_event_handler_instance_register(WIFI_EVENT,
                                                         ESP_EVENT_ANY_ID,
                                                         &wifi_event_handler,
                                                         NULL,
-                                                        &instance_any_id));
+                                                        &instance_any_id_));
     ESP_ERROR_CHECK(esp_event_handler_instance_register(IP_EVENT,
                                                         IP_EVENT_STA_GOT_IP,
                                                         &wifi_event_handler,
                                                         NULL,
-                                                        &instance_got_ip));
+                                                        &instance_got_ip_));
 
     ESP_ERROR_CHECK(esp_wifi_set_mode(WIFI_MODE_STA));
     ESP_ERROR_CHECK(esp_wifi_set_config(WIFI_IF_STA, &wifi_config));
@@ -103,8 +101,8 @@ void WifiWrap::connect(const WifiPassHeader& header)
     }
 
     /* The event will not be processed after unregister */
-    ESP_ERROR_CHECK(esp_event_handler_instance_unregister(IP_EVENT, IP_EVENT_STA_GOT_IP, instance_any_id));
-    ESP_ERROR_CHECK(esp_event_handler_instance_unregister(WIFI_EVENT, ESP_EVENT_ANY_ID, instance_got_ip));
+    ESP_ERROR_CHECK(esp_event_handler_instance_unregister(IP_EVENT, IP_EVENT_STA_GOT_IP, instance_any_id_));
+    ESP_ERROR_CHECK(esp_event_handler_instance_unregister(WIFI_EVENT, ESP_EVENT_ANY_ID, instance_got_ip_));
     vEventGroupDelete(s_wifi_event_group);
 }
 
@@ -115,7 +113,11 @@ void WifiWrap::connection_check()
 
 void WifiWrap::disconnect() 
 {
+    ESP_ERROR_CHECK(esp_wifi_stop());
     ESP_ERROR_CHECK(esp_wifi_deinit());
+
+    // ESP_ERROR_CHECK(esp_wifi_clear_default_wifi_driver_and_handlers(sta_netif_)); // <-add this!
+    // esp_netif_destroy(sta_netif_);
 }
 
 
