@@ -4,6 +4,7 @@
 #include "SmartKnockAPI.h"
 #include "WifiWrap.h"
 #include "DeepSleep.h"
+#include "ULP.h"
 
 // External Libraries
 #include "freertos/semphr.h"
@@ -119,6 +120,6 @@ void task_scan_handler(void * pvParameters)
             ESP_LOGI("SmartKnock", "UNLOCK message received\n");
             xSemaphoreGive(task_wifi_complete);
         }
-        vTaskDelayUntil(&xLastWakeTime, pdMS_TO_TICKS(10000));
+        vTaskDelayUntil(&xLastWakeTime, pdMS_TO_TICKS(30000)); // Scan every 30 s
     }
 }
