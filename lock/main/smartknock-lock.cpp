@@ -4,7 +4,7 @@
 #include "SmartKnockAPI.h"
 #include "WifiWrap.h"
 #include "DeepSleep.h"
-#include "ULP.h"
+#include "ulp_adc.h"
 
 // External Libraries
 #include "freertos/semphr.h"
@@ -23,6 +23,8 @@ void app_main();
 #define GLOBAL_CPU_CORE_1   1
 
 SemaphoreHandle_t task_wifi_complete;
+
+ULP ulp;
 
 // Global Defines Tasks
 
@@ -60,6 +62,12 @@ void app_main() {
     sleep_wrapper.config(sleep_config);
     sleep_wrapper.print_wakeup_reason();
 
+    ULPConfig ulp_config = {
+        GPIO_NUM_27, 
+        GPIO_NUM_13
+    };
+    ulp.enable_ulp_monitoring(ulp_config);
+
     /*  Start Tasks */
     BaseType_t xTaskAPIReturned;
     BaseType_t xTaskSleep;
@@ -95,6 +103,7 @@ void task_sleep_handler(void * pvParameters)
     while (xSemaphoreTake(task_wifi_complete, ( TickType_t ) 0) != pdTRUE) {}
     // Begins sleep mode after all processes are finished
     ESP_LOGI("SmartKnock", " Beginning sleep mode\n");
+    ulp.start_ulp_monitoring();
     sleep_handler->sleep();
     for (;;)
     {}

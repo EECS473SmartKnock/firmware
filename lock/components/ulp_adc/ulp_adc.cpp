@@ -1,4 +1,4 @@
-#include "ulp.h"
+#include "ulp_adc.h"
 
 extern const uint8_t ulp_main_bin_start[] asm("_binary_ulp_main_bin_start");
 extern const uint8_t ulp_main_bin_end[]   asm("_binary_ulp_main_bin_end");
@@ -35,8 +35,8 @@ void ULP::enable_ulp_monitoring(ULPConfig config) {
     adc1_config_channel_atten(ADC1_CHANNEL_6, ADC_ATTEN_DB_11);
     adc1_config_width(ADC_WIDTH_BIT_12);
     adc1_ulp_enable();
-    ulp_low_threshold = 3 * (4095 / 3.3);  //1 volt
-    ulp_high_threshold = 3 * (4095 / 3.3);   // 3 volts
+    ulp_low_threshold = 2.5 * (4095 / 3.3);  // 2.5 volt lower bound
+    ulp_high_threshold = 2.5 * (4095 / 3.3);   // 2.5 volts upper bound
 
     /* Set ULP wake up period to 500ms */
     ulp_set_wakeup_period(0, 500 * 1000);

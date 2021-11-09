@@ -26,9 +26,9 @@ void DeepSleep::config(SleepConfig config)
     ESP_ERROR_CHECK(rtc_gpio_pullup_en(config.wakeup_pin));
     ESP_ERROR_CHECK(rtc_gpio_isolate(config.wakeup_pin));
     // Enables wakeup from timer source
-    ESP_ERROR_CHECK(esp_sleep_enable_timer_wakeup(config.wakeup_period_us));
+    // ESP_ERROR_CHECK(esp_sleep_enable_timer_wakeup(config.wakeup_period_us));
     // Enables wakeup from RTC pin source
-    ESP_ERROR_CHECK(esp_sleep_enable_ext0_wakeup(config.wakeup_pin, config.wakeup_pin_active_level));
+    // ESP_ERROR_CHECK(esp_sleep_enable_ext0_wakeup(config.wakeup_pin, config.wakeup_pin_active_level));
     wifi_wrapper_ = config.wifi_wrapper;
 }
 
@@ -56,6 +56,10 @@ void DeepSleep::print_wakeup_reason()
         }
         case ESP_SLEEP_WAKEUP_TIMER: {
             ESP_LOGI(TAG, " woken up by periodic timer");
+            break;
+        }
+        case ESP_SLEEP_WAKEUP_ULP: {
+            ESP_LOGI(TAG, " woken up by adc read");
             break;
         }
         default: {

@@ -36,7 +36,6 @@ extern uint32_t ulp_ADC_reading;
 
 class ULP {
     public:
-        ULP();
 
         void enable_ulp_monitoring(ULPConfig config);
 
