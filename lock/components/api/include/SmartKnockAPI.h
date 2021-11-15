@@ -1,7 +1,8 @@
 #include <string.h>
 
-#include <string>
 #include <sstream>
+#include <string>
+
 #include "esp_http_client.h"
 
 enum MessageType { NONE, LOCK, UNLOCK };
@@ -11,7 +12,10 @@ struct ServerMessage {
     MessageType type;
 };
 
-struct LockMessage {};
+struct LockMessage {
+    float battery;
+    int knocks;
+};
 
 class SmartKnockAPI {
    public:
@@ -19,11 +23,17 @@ class SmartKnockAPI {
     static constexpr const int http_response_max_size = 1024;
     char* url = nullptr;
     uint32_t url_len = 0;
-    MessageType get_incoming_message();
-    void send_message(const LockMessage& msg);
+    MessageType get_incoming_message(const std::string &passphrase);
+    void send_message(const std::string &passphrase, const LockMessage& msg);
+
+    std::string get_unique_identifier();
 
    private:
+    std::string passphrase;
     int last_consumed_message_id = 0;
+    std::string compute_hash(const std::string& message);
+    std::string get_mac_address();
     std::string make_http_get_request(const char* url);
+    std::string make_http_post_request(const char* url, const char* data);
     static esp_err_t _http_event_handler(esp_http_client_event_t* evt);
 };

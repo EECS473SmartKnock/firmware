@@ -30,6 +30,7 @@ class DeepSleep {
         void wakeup();
 
         void print_wakeup_reason();
+        bool is_wakeup_by_reset();
     private:
         WifiWrap* wifi_wrapper_;
 };

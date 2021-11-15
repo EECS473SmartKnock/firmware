@@ -69,6 +69,10 @@ void DeepSleep::print_wakeup_reason()
     }
 }
 
+bool DeepSleep::is_wakeup_by_reset() {
+    return esp_sleep_get_wakeup_cause() == ESP_SLEEP_WAKEUP_UNDEFINED;
+}
+
 void RTC_IRAM_ATTR esp_wake_deep_sleep(void) {
     esp_default_wake_deep_sleep();
     // Add additional functionality here
