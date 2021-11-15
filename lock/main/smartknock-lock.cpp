@@ -52,8 +52,8 @@ void app_main() {
 
     /*  Initialize Wifi */
     WifiWrap wifi_wrapper;
-    char network_name[] = "HOME-E926-2.4";
-    char password[] = "chose1583fasten";
+    char network_name[] = "ArthurZhang";
+    char password[] = "arthurthesoccerball";
     WifiPassHeader header{network_name, strlen(network_name), password, strlen(password)};
 
     wifi_wrapper.connect(header);
@@ -106,6 +106,11 @@ void task_sleep_handler(void* pvParameters) {
     for (;;) {
     }
 }
+//TODO:
+/*
+    timer wakeup periodically for sending stats
+    send stats right before sleeping
+*/
 
 void task_scan_handler(void* pvParameters) {
     configASSERT(static_cast<SmartKnockAPI*>(pvParameters) != nullptr);
@@ -131,6 +136,6 @@ void task_scan_handler(void* pvParameters) {
             }
         } while (m != MessageType::NONE);
         xSemaphoreGive(task_wifi_complete);
-        vTaskDelayUntil(&xLastWakeTime, pdMS_TO_TICKS(30000));  // Scan every 30 s
+        vTaskDelayUntil(&xLastWakeTime, pdMS_TO_TICKS(15000));  // Scan every 15 s
     }
 }
