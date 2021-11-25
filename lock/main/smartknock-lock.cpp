@@ -1,11 +1,13 @@
 #include <stdio.h>
 
 // Internal Libraries
+#include "NimBLEDevice.h"
 #include "DeepSleep.h"
-#include "SmartKnockAPI.h"
 #include "NVSWrapper.h"
+#include "SmartKnockAPI.h"
 #include "WifiWrap.h"
 #include "ulp_adc.h"
+#include "BLE.h"
 
 // External Libraries
 #include "esp_log.h"
@@ -27,6 +29,7 @@ SemaphoreHandle_t task_wifi_complete;
 
 ULP ulp;
 NVSWrapper nvs;
+BLE ble;
 std::string passphrase = "test";  // TODO: this should be set by the setup process and
                                   // saved in non-volatile storage
 
@@ -37,24 +40,31 @@ void task_scan_handler(void* pvParameters);
 void task_sleep_handler(void* pvParameters);
 
 void app_main() {
-    esp_err_t ret = nvs_flash_init();
-    if (ret == ESP_ERR_NVS_NO_FREE_PAGES || ret == ESP_ERR_NVS_NEW_VERSION_FOUND) {
-        ESP_ERROR_CHECK(nvs_flash_erase());
-        ret = nvs_flash_init();
-    }
-    ESP_ERROR_CHECK(ret);
-
     /*  Initialize API Libraries    */
     static SmartKnockAPI api;
     static DeepSleep sleep_wrapper;
 
     nvs.init();
-
+    ble.init();
     /*  Initialize Wifi */
+    // TODO: this should load saved credentials from NVS
+    // std::string ssid = nvs.get("ssid");
+    // std::string password = nvs.get("password");
     WifiWrap wifi_wrapper;
     char network_name[] = "HOME-E926-2.4";
     char password[] = "chose1583fasten";
     WifiPassHeader header{network_name, strlen(network_name), password, strlen(password)};
+
+    // These below lines will advertise the WiFi credentials publicly so maybe it's not a great idea...
+    // ble.setWifiSSID(network_name);
+    // ble.setWifiPassword(password);
+    ble.onWifiCredentialsUpdated = [&](const char* ssid, const char* password) {
+        // TODO: save credentials in NVS so that they're used next wakeup
+        // nvs.set("ssid", ssid);
+        // nvs.set("password", password);
+        // For now, just log it
+        ESP_LOGI("SmartKnock", "Wifi credentials updated: %s, %s", ssid, password);
+    };
 
     wifi_wrapper.connect(header);
 

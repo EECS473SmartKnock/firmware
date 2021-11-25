@@ -122,6 +122,7 @@ std::string SmartKnockAPI::make_http_get_request(const char *url) {
     } else {
         ESP_LOGE(TAG, "HTTP GET request failed: %s", esp_err_to_name(err));
     }
+    esp_http_client_cleanup(client);
     // ESP_LOGI(TAG, "Received: %s", local_response_buffer);
     // ESP_LOG_BUFFER_HEX(TAG, local_response_buffer, strlen(local_response_buffer));
     return local_response_buffer;
@@ -149,6 +150,7 @@ std::string SmartKnockAPI::make_http_post_request(const char *url, const char *d
     } else {
         ESP_LOGE(TAG, "HTTP POST request failed: %s", esp_err_to_name(err));
     }
+    esp_http_client_cleanup(client);
     // ESP_LOGI(TAG, "Received: %s", local_response_buffer);
     return local_response_buffer;
 }
