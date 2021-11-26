@@ -26,10 +26,9 @@ class SmartKnockAPI {
     MessageType get_incoming_message(const std::string &passphrase);
     void send_message(const std::string &passphrase, const LockMessage& msg);
 
-    std::string get_unique_identifier();
+    std::string get_unique_identifier(const std::string &passphrase);
 
    private:
-    std::string passphrase;
     int last_consumed_message_id = 0;
     std::string compute_hash(const std::string& message);
     std::string get_mac_address();

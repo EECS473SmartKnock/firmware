@@ -42,6 +42,16 @@ bool NVSWrapper::exists(const char* key) {
     return (err == ESP_OK);
 }
 
+bool NVSWrapper::existsStr(const char* key) {
+    // Returns true if the string key exists in NVS
+    size_t required_size;
+    esp_err_t err = nvs_get_str(_handle, key, NULL, &required_size);
+    if (err != ESP_OK) {
+        printf("Error (%s) getting string!\n", esp_err_to_name(err));
+    }
+    return (err == ESP_OK);
+}
+
 void NVSWrapper::erase(const char* key) {
     esp_err_t err = nvs_erase_key(_handle, key);
     if (err != ESP_OK) {

@@ -14,10 +14,10 @@ extern "C" {
 #define MAX_PASSWORD_SIZE					64
 
 struct WifiPassHeader {
-    char* ssid;
+    const char* ssid;
     size_t ssid_len;
 
-    char* password;
+    const char* password;
     size_t password_len;
 };
 

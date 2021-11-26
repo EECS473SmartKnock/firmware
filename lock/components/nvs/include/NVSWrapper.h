@@ -27,13 +27,13 @@ class NVSWrapper {
     template <typename T>
     T get(const char *key) {
         T value;
-        size_t required_size;
+        size_t required_size = sizeof(T);
         esp_err_t err = nvs_get_blob(_handle, key, &value, &required_size);
         if (required_size != sizeof(T)) {
-            printf("Error (%s) getting blob!\n", esp_err_to_name(err));
+            printf("Error (%s) getting blob (length)! %s\n", esp_err_to_name(err), key);
         }
         if (err != ESP_OK) {
-            printf("Error (%s) getting blob!\n", esp_err_to_name(err));
+            printf("Error (%s) getting blob! %s\n", esp_err_to_name(err), key);
         }
         return value;
     }
@@ -47,7 +47,7 @@ class NVSWrapper {
     }
     std::string get(const char *key) {
         char value[128];
-        size_t required_size;
+        size_t required_size = 128;
         esp_err_t err = nvs_get_str(_handle, key, value, &required_size);
         if (required_size > 128) {
             printf("Error (%s) getting string!\n", esp_err_to_name(err));
@@ -58,6 +58,7 @@ class NVSWrapper {
         return std::string(value);
     }
     bool exists(const char *key);
+    bool existsStr(const char *key);
     void erase(const char *key);
     void eraseAll();
     void commit();

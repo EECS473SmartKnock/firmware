@@ -20,7 +20,7 @@ std::string SmartKnockAPI::get_mac_address() {
     ESP_LOGI(TAG, "mac address: %s", hex_address);
     return std::string(hex_address);
 }
-std::string SmartKnockAPI::get_unique_identifier() {
+std::string SmartKnockAPI::get_unique_identifier(const std::string &passphrase) {
     // Return sha256(MAC address + passphrase)
     std::string mac_address = get_mac_address();
     std::string unique_identifier = mac_address + passphrase;
@@ -45,7 +45,7 @@ std::string SmartKnockAPI::compute_hash(const std::string &data) {
 MessageType SmartKnockAPI::get_incoming_message(const std::string &passphrase) {
     std::string url = std::string(SmartKnockAPI::api_base_url) + "messages/";
 
-    auto identifier = get_unique_identifier();
+    auto identifier = get_unique_identifier(passphrase);
 
     url += identifier;
     url += "?format=spaces";
@@ -92,7 +92,7 @@ MessageType SmartKnockAPI::get_incoming_message(const std::string &passphrase) {
 void SmartKnockAPI::send_message(const std::string &passphrase, const LockMessage &msg) {
     // Make post request to api with battery and knocks as URL encoded parameters
     std::string url = std::string(SmartKnockAPI::api_base_url) + "stats/";
-    auto identifier = get_unique_identifier();
+    auto identifier = get_unique_identifier(passphrase);
     url += identifier;
     url += "?battery=";
     url += std::to_string(msg.battery);
@@ -188,7 +188,7 @@ esp_err_t SmartKnockAPI::_http_event_handler(esp_http_client_event_t *evt) {
                     if (output_buffer == NULL) {
                         output_buffer = (char *)malloc(
                             esp_http_client_get_content_length(evt->client));
-                        output_len = 0;
+                        output_len = 0;\
                         if (output_buffer == NULL) {
                             ESP_LOGE(TAG, "Failed to allocate memory for output buffer");
                             return ESP_FAIL;
