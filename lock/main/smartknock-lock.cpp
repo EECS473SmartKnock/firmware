@@ -44,6 +44,8 @@ void app_main() {
     static DeepSleep sleep_wrapper;
 
     nvs.init();
+    // nvs.eraseAll();
+    // nvs.commit();
 
     /*
 
