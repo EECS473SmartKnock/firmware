@@ -43,6 +43,16 @@ void app_main() {
     static SmartKnockAPI api;
     static DeepSleep sleep_wrapper;
 
+    /* ------ BLE Fob test ---------- */
+    ble.init();
+    while (!ble.connectToFob());
+    ble.fobWrite("Hello world!");
+    char buffer[64];
+    ble.fobRecv(buffer);
+    ESP_LOGI("BLE", "Received: %s", buffer);
+    return;
+    /* ------------------------------ */
+
     nvs.init();
     // nvs.eraseAll();
     // nvs.commit();
@@ -94,6 +104,7 @@ void app_main() {
 
     // If still setting up, wait for setup to complete
     if (!is_setup) {
+        ble.startServer();
         ESP_LOGI("BLE", "Waiting for setup to complete");
         for (;;) {
             vTaskDelay(1000 / portTICK_PERIOD_MS);
