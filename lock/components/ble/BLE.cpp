@@ -12,7 +12,10 @@ void BLE::init() {
     }
     initialized = true;
     NimBLEDevice::init("SmartKnock");
+    instance = this;
+}
 
+void BLE::startServer() {
     server = NimBLEDevice::createServer();
     appService = server->createService(AppServiceUUID);
     wifiSSIDCharacteristic = appService->createCharacteristic(WifiSSIDCharacteristicUUID);
@@ -26,22 +29,10 @@ void BLE::init() {
         appService->createCharacteristic(ResetChallengeCharacteristicUUID);
     macCharacteristic = appService->createCharacteristic(MACCharacteristicUUID);
 
-    fobService = server->createService(FobServiceUUID);
-    for (int i = 0; i < 4; i++) {
-        fobTxCharacteristics[i] =
-            fobService->createCharacteristic(FobTxCharacteristicUUIDs[i]);
-        fobRxCharacteristics[i] =
-            fobService->createCharacteristic(FobRxCharacteristicUUIDs[i]);
-    }
-
     // Set callbacks
     passphraseCharacteristic->setCallbacks(&appCallbacks);
     hashCharacteristic->setCallbacks(&appCallbacks);
     resetCharacteristic->setCallbacks(&appCallbacks);
-
-    for (int i = 0; i < 4; i++) {
-        fobRxCharacteristics[i]->setCallbacks(&fobCallbacks);
-    }
 
     // Set MAC address
     auto get_mac_address = []() {
@@ -57,19 +48,81 @@ void BLE::init() {
     uint8_t resetChallengeData[6];
     esp_fill_random(resetChallengeData, sizeof(resetChallengeData));
     char hex_resetChallenge[64];
-    for (int i = 0; i < 6; i++) sprintf(&hex_resetChallenge[i * 2], "%02x", resetChallengeData[i]);
+    for (int i = 0; i < 6; i++)
+        sprintf(&hex_resetChallenge[i * 2], "%02x", resetChallengeData[i]);
     resetChallengeCharacteristic->setValue(std::string(hex_resetChallenge));
 
     // Start all services
     appService->start();
-    fobService->start();
 
     // Advertise services
     server->getAdvertising()->addServiceUUID(appService->getUUID());
-    server->getAdvertising()->addServiceUUID(FobServiceUUID);
 
     server->getAdvertising()->start();
     server->start();
+}
+
+void BLE::stopServer() { server->getAdvertising()->stop(); }
+
+SemaphoreHandle_t BLE::fobScanSemaphore = nullptr;
+
+bool BLE::connectToFob() {
+    // Scan for Fob and connect if possible. If not found within a timeout, return false.
+    scan = NimBLEDevice::getScan();
+    scan->setAdvertisedDeviceCallbacks(&scanCallbacks);
+    scan->setInterval(400);
+    scan->setWindow(100);
+    scan->setActiveScan(true);
+    fobScanSemaphore = xSemaphoreCreateBinary();
+    scan->start(fobScanTimeSec);
+    if (xSemaphoreTake(fobScanSemaphore, pdMS_TO_TICKS(fobScanTimeSec * 1000 * 2)) ==
+        pdFALSE) {
+        ESP_LOGE("BLE", "Fob not found, semaphore timed out");
+        return false;
+    } else if (fobDevice == nullptr) {
+        ESP_LOGE("BLE", "Fob not found, device wasn't set");
+        return false;
+    }
+    ESP_LOGI("BLE", "Connecting to Fob");
+    client = NimBLEDevice::createClient();
+    // client->setClientCallbacks(&);
+
+    if (!client->connect(fobDevice)) {
+        ESP_LOGE("BLE", "Fob connection failed");
+        return false;
+    }
+
+    if (!client->isConnected()) {
+        ESP_LOGE("BLE", "Fob connection failed");
+        return false;
+    }
+
+    ESP_LOGE("BLE", "Fob connected: %s, RSSI: %d",
+             client->getPeerAddress().toString().c_str(), fobDevice->getRSSI());
+
+    fobService = client->getService(FobServiceUUID);
+    if (fobService == nullptr) {
+        ESP_LOGE("BLE", "Fob service not found");
+        return false;
+    }
+
+    for (int i = 0; i < 4; i++) {
+        fobTxCharacteristics[i] =
+            fobService->getCharacteristic(FobTxCharacteristicUUIDs[i]);
+        fobRxCharacteristics[i] =
+            fobService->getCharacteristic(FobRxCharacteristicUUIDs[i]);
+        if (fobTxCharacteristics[i] == nullptr || fobRxCharacteristics[i] == nullptr) {
+            ESP_LOGE("BLE", "Fob characteristic not found");
+            return false;
+        }
+        fobRxCharacteristics[i]->subscribe(true, &fobNotify);
+        if (!fobTxCharacteristics[i]->canWrite()) {
+            ESP_LOGE("BLE", "Fob characteristic not writable");
+            return false;
+        }
+    }
+
+    return true;
 }
 
 void BLE::setWifiSSID(const std::string& ssid) {
@@ -113,65 +166,66 @@ void BLE::AppCallbacks::onWrite(NimBLECharacteristic* pCharacteristic) {
         std::string expected_hash = compute_hash(ssid + password + passphrase);
         std::string actual_hash = pCharacteristic->getValue();
         if (expected_hash != actual_hash) {
-            ESP_LOGE("BLE", "WiFi update hash mismatch: %s, %s (%s, %s, %s)", expected_hash.c_str(),
-                     actual_hash.c_str(), ssid.c_str(), password.c_str(), passphrase.c_str());
+            ESP_LOGE("BLE", "WiFi update hash mismatch: %s, %s (%s, %s, %s)",
+                     expected_hash.c_str(), actual_hash.c_str(), ssid.c_str(),
+                     password.c_str(), passphrase.c_str());
             return;
         }
         ble->onWifiCredentialsUpdated(ssid, password);
-    }
-    else if (pCharacteristic == ble->resetCharacteristic) {
+    } else if (pCharacteristic == ble->resetCharacteristic) {
         // Make sure reset hash is correct
         std::string passphrase = NVSWrapper::getInstance()->get("passphrase");
         std::string reset_challenge = ble->resetChallengeCharacteristic->getValue();
         std::string reset_hash = pCharacteristic->getValue();
         std::string expected_hash = compute_hash(reset_challenge + passphrase);
         if (expected_hash != reset_hash) {
-            ESP_LOGE("BLE", "Reset hash mismatch: %s, %s, (%s, %s)", expected_hash.c_str(),
-                     reset_hash.c_str(), reset_challenge.c_str(), passphrase.c_str());
+            ESP_LOGE("BLE", "Reset hash mismatch: %s, %s, (%s, %s)",
+                     expected_hash.c_str(), reset_hash.c_str(), reset_challenge.c_str(),
+                     passphrase.c_str());
             return;
         }
         ble->onResetRequested();
     }
 }
 
-void BLE::FobCallbacks::onWrite(NimBLECharacteristic* pCharacteristic) {
-    // TODO handle fob data
-    // TODO: I just realized that the original code posted by Ben in the Discord had the
-    // ESP32 configured as a BLE Client. Here we need to have it be a Server because the
-    // React Native library doesn't support acting as a server.
+NimBLEAdvertisedDevice* BLE::fobDevice = nullptr;
 
-    // So we might need to change this to be a client, or change the code on the fob.
+void BLE::ScanCallbacks::onResult(NimBLEAdvertisedDevice* device) {
+    if (device->isAdvertisingService(NimBLEUUID(FobServiceUUID))) {
+        ESP_LOGI("BLE", "Found Fob: %s", device->getName().c_str());
 
+        xSemaphoreGive(fobScanSemaphore);
+        fobDevice = device;
+    }
+}
+
+BLE* BLE::instance = nullptr;
+
+void BLE::fobNotify(NimBLERemoteCharacteristic* pRemoteCharacteristic, uint8_t* pData,
+                    size_t length, bool isNotify) {
+    if (!instance) return;
     if (!fobRecvSemaphore) return;
 
     int idx;
-    if (pCharacteristic == ble->fobRxCharacteristics[0]) {
-        idx = 0;
-    } else if (pCharacteristic == ble->fobRxCharacteristics[1]) {
-        idx = 1;
-    } else if (pCharacteristic == ble->fobRxCharacteristics[2]) {
-        idx = 2;
-    } else if (pCharacteristic == ble->fobRxCharacteristics[3]) {
-        idx = 3;
-    } else {
+    for (idx = 0; idx < 4; idx++) {
+        if (pRemoteCharacteristic == instance->fobRxCharacteristics[idx]) break;
+    }
+    if (idx == 4) return;
+
+    if (pRemoteCharacteristic->getValue().length() != 16) {
+        ESP_LOGE("BLE", "Invalid data length: %d", length);
         return;
     }
 
-    // Make sure length of data is 16
-    if (pCharacteristic->getValue().length() != 16) {
-        ESP_LOGE("BLE", "Invalid data length");
-        return;
-    }
+    ESP_LOGI("BLE", "Received data from Fob: %d", idx);
 
     fobRecvFlag |= 1 << idx;
-
-    // Notify fobRecv semaphore
-    xSemaphoreGive(ble->fobRecvSemaphore);
+    xSemaphoreGive(fobRecvSemaphore);
 }
 
 void BLE::fobWrite(const char* data) {
     for (int i = 0; i < 4; i++) {
-        fobRxCharacteristics[i]->setValue((const uint8_t*)(data + (i * 16)), 16);
+        fobRxCharacteristics[i]->writeValue((const uint8_t*)(data + (i * 16)), 16);
     }
 }
 
@@ -185,6 +239,7 @@ bool BLE::fobRecv(char* out) {
     while (fobRecvFlag != 0xF) {
         xSemaphoreTake(fobRecvSemaphore, portMAX_DELAY);
     }
+    vSemaphoreDelete(fobRecvSemaphore);
     fobRecvSemaphore = nullptr;
 
     // Copy data to out

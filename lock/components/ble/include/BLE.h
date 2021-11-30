@@ -1,6 +1,7 @@
+#include <string>
+
 #include "NimBLEDevice.h"
 #include "freertos/FreeRTOS.h"
-#include <string>
 
 /*
 
@@ -55,28 +56,38 @@ static constexpr const char* const FobTxCharacteristicUUIDs[4] = {
 
 class BLE {
    public:
-    BLE() : appCallbacks(this), fobCallbacks(this){};
+    BLE() : appCallbacks(this), scanCallbacks(this) {};
     void init();
+    void startServer();
+    void stopServer();
 
+    bool connectToFob();
     void setWifiSSID(const std::string& ssid);
     void setWifiPassword(const std::string& password);
 
     // Called when initial setup completes, returning the passphrase and WiFi credentials
     // Does NOT check if the device is actually in setup mode
-    std::function<void(const std::string &passphrase, const std::string &ssid,
-                       const std::string &password)>
+    std::function<void(const std::string& passphrase, const std::string& ssid,
+                       const std::string& password)>
         onSetupComplete;
 
     std::function<void()> onResetRequested;
-    
-    // Called during normal operation after an "authenticated" request to change WiFi credentials
-    std::function<void(const std::string &ssid, const std::string &password)> onWifiCredentialsUpdated;
+
+    // Called during normal operation after an "authenticated" request to change WiFi
+    // credentials
+    std::function<void(const std::string& ssid, const std::string& password)>
+        onWifiCredentialsUpdated;
 
     void fobWrite(const char* data);
     bool fobRecv(char* out);
 
+    static constexpr const int fobScanTimeSec = 15;
+
    private:
     NimBLEServer* server = nullptr;
+    NimBLEScan* scan = nullptr;
+    NimBLEClient* client = nullptr;
+
     NimBLEService* appService = nullptr;
     NimBLECharacteristic* wifiSSIDCharacteristic = nullptr;
     NimBLECharacteristic* wifiPasswordCharacteristic = nullptr;
@@ -85,11 +96,15 @@ class BLE {
     NimBLECharacteristic* resetCharacteristic = nullptr;
     NimBLECharacteristic* resetChallengeCharacteristic = nullptr;
     NimBLECharacteristic* macCharacteristic = nullptr;
-    NimBLEService* fobService = nullptr;
-    NimBLECharacteristic* fobTxCharacteristics[4] = {nullptr};
-    NimBLECharacteristic* fobRxCharacteristics[4] = {nullptr};
+    NimBLERemoteService* fobService = nullptr;
+    NimBLERemoteCharacteristic* fobTxCharacteristics[4] = {nullptr};
+    NimBLERemoteCharacteristic* fobRxCharacteristics[4] = {nullptr};
+
+    static NimBLEAdvertisedDevice* fobDevice;
+    static BLE* instance;
 
     static uint8_t fobRecvFlag;
+    static SemaphoreHandle_t fobScanSemaphore;
     static SemaphoreHandle_t fobRecvSemaphore;
 
     class AppCallbacks : public NimBLECharacteristicCallbacks {
@@ -103,17 +118,18 @@ class BLE {
         BLE* ble;
     };
 
-    class FobCallbacks : public NimBLECharacteristicCallbacks {
+    class ScanCallbacks : public NimBLEAdvertisedDeviceCallbacks {
        public:
-        FobCallbacks(BLE* ble) : ble(ble) {}
-        void onWrite(NimBLECharacteristic* pCharacteristic) override;
-        // void onRead(NimBLECharacteristic* pCharacteristic) override;
-        // void onNotify(NimBLECharacteristic* pCharacteristic) override;
+        ScanCallbacks(BLE* ble) : ble(ble) {}
+        void onResult(NimBLEAdvertisedDevice* advertisedDevice) override;
 
        private:
         BLE* ble;
     };
 
+    static void fobNotify(NimBLERemoteCharacteristic* pRemoteCharacteristic,
+                          uint8_t* pData, size_t length, bool isNotify);
+
     AppCallbacks appCallbacks;
-    FobCallbacks fobCallbacks;
+    ScanCallbacks scanCallbacks;
 };
