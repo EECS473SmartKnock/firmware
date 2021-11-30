@@ -2,9 +2,6 @@
 
 // ESP libraries
 #include "freertos/FreeRTOS.h"
-#include "esp_log.h"
-#include "esp_err.h"
-#include "esp_sleep.h"
 #include "driver/rtc_io.h"
 
 #include "DeepSleep.h"
@@ -67,6 +64,11 @@ void DeepSleep::print_wakeup_reason()
             break;
         }
     }
+}
+
+esp_sleep_wakeup_cause_t DeepSleep::get_wakeup_reason()
+{
+    return esp_sleep_get_wakeup_cause();
 }
 
 bool DeepSleep::is_wakeup_by_reset() {

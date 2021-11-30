@@ -16,6 +16,9 @@
 #include "freertos/task.h"
 #include "nvs_flash.h"
 
+// STL libraries
+#include <string>
+
 extern "C" {
 void app_main();
 }
@@ -25,11 +28,28 @@ void app_main();
 #define GLOBAL_CPU_CORE_0 0
 #define GLOBAL_CPU_CORE_1 1
 
-SemaphoreHandle_t task_wifi_complete;
+#define GLOBAL_MAX_NUMBER_TASKS 2
+
+// Master Task State Machine
+enum Master_State {
+    Initial,
+    BleAuth,
+    TaskScanning,
+    StatPublishing,
+    Sleeping
+};
+static const char * State_Map[] = { "Initial", "BleAuth", "TaskScanning", "StatPublishing", "Sleeping" };
+
+SemaphoreHandle_t task_queue_sem;
+SemaphoreHandle_t task_sleep_sem;
 
 ULP ulp;
 NVSWrapper nvs;
 BLE ble;
+/*  Initialize API Libraries    */
+static DeepSleep sleep_wrapper;
+static SmartKnockAPI api;
+
 // std::string passphrase = "";  // TODO: this should be set by the setup process and
                               // saved in non-volatile storage
 // Global Defines Tasks
@@ -39,10 +59,6 @@ void task_scan_handler(void* pvParameters);
 void task_sleep_handler(void* pvParameters);
 
 void app_main() {
-    /*  Initialize API Libraries    */
-    static SmartKnockAPI api;
-    static DeepSleep sleep_wrapper;
-
     nvs.init();
 
     /*
@@ -153,20 +169,73 @@ void app_main() {
     ULPConfig ulp_config = {GPIO_NUM_27, GPIO_NUM_13};
     ulp.enable_ulp_monitoring(ulp_config);
 
-    /*  Start Tasks */
-    BaseType_t xTaskAPIReturned;
-    BaseType_t xTaskSleep;
-    TaskHandle_t xAPIHandle = NULL;
-    TaskHandle_t xSleepHandle = NULL;
+    /*  Setup Task Queue */
+    // Prevent uC from sleeping
+    task_sleep_sem = xSemaphoreCreateBinary();
+    xSemaphoreTake(task_sleep_sem, ( TickType_t ) 0);
+    // Confirm minimum number of scans are completed
+    task_queue_sem = xSemaphoreCreateCounting(GLOBAL_MAX_NUMBER_TASKS, GLOBAL_MAX_NUMBER_TASKS);
+    for (int i = 0; i < GLOBAL_MAX_NUMBER_TASKS; ++i) { xSemaphoreGive(task_queue_sem); }
+}
 
-    task_wifi_complete = xSemaphoreCreateBinary();
+void task_master(void* pvParameters) {
+    configASSERT(static_cast<DeepSleep*>(pvParameters) != nullptr);
 
-    xTaskAPIReturned =
-        xTaskCreatePinnedToCore(task_scan_handler, "APIScan", GLOBAL_STACK_SIZE, &api, 1,
-                                &xAPIHandle, GLOBAL_CPU_CORE_0);
-    xTaskSleep =
-        xTaskCreatePinnedToCore(task_sleep_handler, "SleepHandler", GLOBAL_STACK_SIZE,
-                                &sleep_wrapper, 0, &xSleepHandle, GLOBAL_CPU_CORE_0);
+    BaseType_t xTaskScanReturned, xTaskSleep;
+    TaskHandle_t xAPIHandle = NULL, xSleepHandle = NULL;
+    DeepSleep* sleep_handler = static_cast<DeepSleep*>(pvParameters);
+    esp_sleep_wakeup_cause_t sleep_wakeup_reason = sleep_handler->get_wakeup_reason();
+    Master_State state = Initial;
+
+    xTaskScanReturned = xTaskCreatePinnedToCore(
+        task_scan_handler, "APIScan", GLOBAL_STACK_SIZE, &api, 1, &xAPIHandle, GLOBAL_CPU_CORE_0
+    );
+
+    xTaskSleep = xTaskCreatePinnedToCore(
+        task_sleep_handler, "SleepHandler", GLOBAL_STACK_SIZE, 
+        &sleep_wrapper, 0, &xSleepHandle, GLOBAL_CPU_CORE_0
+    );
+
+    for (;;) {
+        switch (state) {
+            // ESP_LOGI("SmartKnock", " entering state %s\n", State_Map[int(state)]);
+            case Initial: {
+                if (sleep_wakeup_reason==ESP_SLEEP_WAKEUP_ULP) {
+                    state = BleAuth;
+                } else {
+                    state = TaskScanning;
+                }
+                break;
+            }
+            case BleAuth: {
+                // TODO: Add ble task code here
+                break;
+            }
+            case TaskScanning: {
+                if (uxSemaphoreGetCount(task_queue_sem) == 1) {
+                    state = StatPublishing;
+                    // TODO: Release stat publishing task here
+                }
+                break;
+            }
+            case StatPublishing: {
+                if (uxSemaphoreGetCount(task_queue_sem) == 0) {
+                    state = Sleeping;
+                }
+                break;
+            }
+            case Sleeping: {
+                xSemaphoreGive(task_sleep_sem);
+                break;
+            }
+            default: {
+                ESP_LOGI("SmartKnock", " master task should not be here\n");
+                break;
+            }
+            ESP_LOGI("SmartKnock", " next state %s\n", State_Map[int(state)]);
+        }
+    }
+    
 }
 
 void task_sleep_handler(void* pvParameters) {
@@ -174,12 +243,12 @@ void task_sleep_handler(void* pvParameters) {
 
     DeepSleep* sleep_handler = static_cast<DeepSleep*>(pvParameters);
 
-    while (xSemaphoreTake(task_wifi_complete, (TickType_t)0) != pdTRUE) {
+    while (xSemaphoreTake(task_sleep_sem, ( TickType_t ) 0) != pdTRUE) {
     }
     // Begins sleep mode after all processes are finished
     ESP_LOGI("SmartKnock", " Beginning sleep mode\n");
-    // ulp.start_ulp_monitoring();
-    // sleep_handler->sleep();
+    ulp.start_ulp_monitoring();
+    sleep_handler->sleep();
     for (;;) {
     }
 }
@@ -188,16 +257,17 @@ void task_sleep_handler(void* pvParameters) {
     timer wakeup periodically for sending stats
     send stats right before sleeping
 */
-
 void task_scan_handler(void* pvParameters) {
     configASSERT(static_cast<SmartKnockAPI*>(pvParameters) != nullptr);
 
     TickType_t xLastWakeTime;
     SmartKnockAPI* api_handle = static_cast<SmartKnockAPI*>(pvParameters);
-    xSemaphoreTake(task_wifi_complete, (TickType_t)0);
     static int num_knocks_placeholder = 0;
     for (;;) {
+        // Block task if only one semaphore is left
+        while (uxSemaphoreGetCount(task_queue_sem) <= 1) {}
         xLastWakeTime = xTaskGetTickCount();
+
         std::string passphrase = nvs.get("passphrase");
 
         api_handle->send_message(passphrase, {0.1234, num_knocks_placeholder++});
@@ -208,12 +278,14 @@ void task_scan_handler(void* pvParameters) {
             m = api_handle->get_incoming_message(passphrase);
             if (m == MessageType::LOCK) {
                 ESP_LOGI("SmartKnock", "LOCK message received\n");
-            }
-            if (m == MessageType::UNLOCK) {
+                // TODO: Move motor here
+            } else if (m == MessageType::UNLOCK) {
                 ESP_LOGI("SmartKnock", "UNLOCK message received\n");
+                // TODO: Move motor here
             }
         } while (m != MessageType::NONE);
-        xSemaphoreGive(task_wifi_complete);
+
+        xSemaphoreTake(task_queue_sem, (TickType_t)0);
         vTaskDelayUntil(&xLastWakeTime, pdMS_TO_TICKS(15000));  // Scan every 15 s
     }
 }

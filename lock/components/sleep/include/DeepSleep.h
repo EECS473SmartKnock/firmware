@@ -4,6 +4,9 @@
 #include <string>
 #include <sstream>
 #include "driver/gpio.h"
+#include "esp_log.h"
+#include "esp_err.h"
+#include "esp_sleep.h"
 
 // Custom Components
 #include "WifiWrap.h"
@@ -28,6 +31,8 @@ class DeepSleep {
         void sleep();
 
         void wakeup();
+
+        esp_sleep_wakeup_cause_t get_wakeup_reason();
 
         void print_wakeup_reason();
         bool is_wakeup_by_reset();
