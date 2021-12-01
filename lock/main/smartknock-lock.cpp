@@ -8,6 +8,7 @@
 #include "SmartKnockAPI.h"
 #include "WifiWrap.h"
 #include "ulp_adc.h"
+#include "Motor.h"
 
 // External Libraries
 #include "esp_log.h"
@@ -46,6 +47,7 @@ SemaphoreHandle_t task_sleep_sem;
 ULP ulp;
 NVSWrapper nvs;
 BLE ble;
+Motor stepper;
 /*  Initialize API Libraries    */
 static DeepSleep sleep_wrapper;
 static SmartKnockAPI api;
@@ -58,24 +60,37 @@ void task_scan_handler(void* pvParameters);
 
 void task_sleep_handler(void* pvParameters);
 
-void app_main() {
-    /*  Initialize API Libraries    */
-    static SmartKnockAPI api;
-    static DeepSleep sleep_wrapper;
+void task_master_handler(void* pvParameters);
 
+void task_publish_handler(void* pvParameters);
+
+void app_main() {
     /* ------ BLE Fob test ---------- */
+    // Comment below out if you dont have fob
     ble.init();
     while (!ble.connectToFob());
     ble.fobWrite("Hello world!");
     char buffer[64];
     ble.fobRecv(buffer);
     ESP_LOGI("BLE", "Received: %s", buffer);
-    return;
+    // return;
     /* ------------------------------ */
 
     nvs.init();
-    // nvs.eraseAll();
+
+    // Uncomment below if you want to test wifi manually
+    
+    // std::string test_ssid = "ArthurZhang";
+    // std::string test_password = "arthurthesoccerball";
+    // std::string test_passphrase = "rand-pass-1234";
+    // nvs.set("ssid", test_ssid);
+    // nvs.set("password", test_password);
+    // nvs.set("passphrase", test_passphrase);
     // nvs.commit();
+    // std::string temp_pass = nvs.get("passphrase");
+
+    // ESP_LOGI("SmartKnock", "passphrase %s ", temp_pass.c_str());
+    
 
     /*
 
@@ -185,7 +200,19 @@ void app_main() {
 
     ULPConfig ulp_config = {GPIO_NUM_27, GPIO_NUM_13};
     ulp.enable_ulp_monitoring(ulp_config);
+    /*
+    MotorConfig stepper_pins = {
+        .gpio_sleep_pin = GPIO_NUM_17; 
+        .gpio_step_pin = GPIO_NUM_18; 
+        .gpio_ms_pins = {}; 
+        .gpio_dir_pin = GPIO_NUM_21; 
+        .gpio_enable_pin = GPIO_NUM_22; 
+        .gpio_reset_pin = GPIO_NUM_19;
+    }
 
+    stepper.config(stepper_pins);
+
+    */
     /*  Setup Task Queue */
     // Prevent uC from sleeping
     task_sleep_sem = xSemaphoreCreateBinary();
@@ -193,16 +220,31 @@ void app_main() {
     // Confirm minimum number of scans are completed
     task_queue_sem = xSemaphoreCreateCounting(GLOBAL_MAX_NUMBER_TASKS, GLOBAL_MAX_NUMBER_TASKS);
     for (int i = 0; i < GLOBAL_MAX_NUMBER_TASKS; ++i) { xSemaphoreGive(task_queue_sem); }
+
+    // TODO: start master task
+    BaseType_t xTaskMaster;
+    TaskHandle_t xMasterHandle = NULL;
+    xTaskMaster = xTaskCreatePinnedToCore(
+        task_master_handler, "MasterHandler", GLOBAL_STACK_SIZE, 
+        nullptr, 0, &xMasterHandle, GLOBAL_CPU_CORE_0
+    );
 }
 
-void task_master(void* pvParameters) {
-    configASSERT(static_cast<DeepSleep*>(pvParameters) != nullptr);
+void task_master_handler(void* pvParameters) {
+    configASSERT(pvParameters == nullptr);
 
     BaseType_t xTaskScanReturned, xTaskSleep;
-    TaskHandle_t xAPIHandle = NULL, xSleepHandle = NULL;
-    DeepSleep* sleep_handler = static_cast<DeepSleep*>(pvParameters);
-    esp_sleep_wakeup_cause_t sleep_wakeup_reason = sleep_handler->get_wakeup_reason();
+    BaseType_t xTaskPublishStats;
+    TaskHandle_t xAPIHandle = NULL, xSleepHandle = NULL, xPublishHandle = NULL;
+    esp_sleep_wakeup_cause_t sleep_wakeup_reason = sleep_wrapper.get_wakeup_reason();
     Master_State state = Initial;
+    TickType_t xLastWakeTime;
+
+    int num_knocks = 0;
+    if (!nvs.existsStr("num_knocks")) {
+        nvs.set("num_knocks", std::to_string(num_knocks));
+        nvs.commit();
+    }
 
     xTaskScanReturned = xTaskCreatePinnedToCore(
         task_scan_handler, "APIScan", GLOBAL_STACK_SIZE, &api, 1, &xAPIHandle, GLOBAL_CPU_CORE_0
@@ -213,9 +255,15 @@ void task_master(void* pvParameters) {
         &sleep_wrapper, 0, &xSleepHandle, GLOBAL_CPU_CORE_0
     );
 
+    xTaskPublishStats = xTaskCreatePinnedToCore(
+        task_publish_handler, "PublishScan", GLOBAL_STACK_SIZE, 
+        NULL, 1, &xPublishHandle, GLOBAL_CPU_CORE_0
+    );
+
     for (;;) {
+        xLastWakeTime = xTaskGetTickCount();
+        ESP_LOGI("SmartKnock", " current state %s\n", State_Map[int(state)]);
         switch (state) {
-            // ESP_LOGI("SmartKnock", " entering state %s\n", State_Map[int(state)]);
             case Initial: {
                 if (sleep_wakeup_reason==ESP_SLEEP_WAKEUP_ULP) {
                     state = BleAuth;
@@ -226,19 +274,26 @@ void task_master(void* pvParameters) {
             }
             case BleAuth: {
                 // TODO: Add ble task code here
+                num_knocks = stoi(nvs.get("num_knocks"));
+                ++num_knocks;
+                nvs.set("num_knocks", std::to_string(num_knocks));
+                nvs.commit();
+
+                state = TaskScanning;
                 break;
             }
             case TaskScanning: {
-                if (uxSemaphoreGetCount(task_queue_sem) == 1) {
+                if (uxSemaphoreGetCount(task_queue_sem) < 2) {
                     state = StatPublishing;
-                    // TODO: Release stat publishing task here
                 }
                 break;
             }
             case StatPublishing: {
-                if (uxSemaphoreGetCount(task_queue_sem) == 0) {
+                // Replace with this function and battery voltage for 0.1234 and num_knocks_placeholder
+                if (uxSemaphoreGetCount(task_queue_sem) < 1) {
                     state = Sleeping;
                 }
+                
                 break;
             }
             case Sleeping: {
@@ -249,10 +304,28 @@ void task_master(void* pvParameters) {
                 ESP_LOGI("SmartKnock", " master task should not be here\n");
                 break;
             }
-            ESP_LOGI("SmartKnock", " next state %s\n", State_Map[int(state)]);
         }
+        vTaskDelayUntil(&xLastWakeTime, pdMS_TO_TICKS(100));  // Scan every 0.1 s
     }
     
+}
+
+void task_publish_handler(void* pvParameters) {
+    configASSERT(pvParameters == nullptr);
+
+    while (uxSemaphoreGetCount(task_queue_sem) > 1) {
+        vTaskDelay(pdMS_TO_TICKS(100));
+    }
+    int num_knocks = stoi(nvs.get("num_knocks"));
+    ESP_LOGI("SmartKnock", " number knocks %i \n", num_knocks);
+    
+    std::string passphrase = nvs.get("passphrase");
+    api.send_message(passphrase, {0.1234, num_knocks});
+    xSemaphoreTake(task_queue_sem, (TickType_t) 0);
+
+    for (;;) {
+        vTaskDelay(pdMS_TO_TICKS(15000));
+    }
 }
 
 void task_sleep_handler(void* pvParameters) {
@@ -266,8 +339,6 @@ void task_sleep_handler(void* pvParameters) {
     ESP_LOGI("SmartKnock", " Beginning sleep mode\n");
     ulp.start_ulp_monitoring();
     sleep_handler->sleep();
-    for (;;) {
-    }
 }
 // TODO:
 /*
@@ -279,15 +350,14 @@ void task_scan_handler(void* pvParameters) {
 
     TickType_t xLastWakeTime;
     SmartKnockAPI* api_handle = static_cast<SmartKnockAPI*>(pvParameters);
-    static int num_knocks_placeholder = 0;
     for (;;) {
         // Block task if only one semaphore is left
-        while (uxSemaphoreGetCount(task_queue_sem) <= 1) {}
+        while (uxSemaphoreGetCount(task_queue_sem) <= 1) {
+            vTaskDelayUntil(&xLastWakeTime, pdMS_TO_TICKS(15000));
+        }
         xLastWakeTime = xTaskGetTickCount();
 
         std::string passphrase = nvs.get("passphrase");
-
-        api_handle->send_message(passphrase, {0.1234, num_knocks_placeholder++});
 
         // Go through all incoming messages, then sleep when there are no more to process
         MessageType m;
@@ -295,10 +365,10 @@ void task_scan_handler(void* pvParameters) {
             m = api_handle->get_incoming_message(passphrase);
             if (m == MessageType::LOCK) {
                 ESP_LOGI("SmartKnock", "LOCK message received\n");
-                // TODO: Move motor here
+                // stepper.move_motor(90);
             } else if (m == MessageType::UNLOCK) {
                 ESP_LOGI("SmartKnock", "UNLOCK message received\n");
-                // TODO: Move motor here
+                // stepper.move_motor(-90);
             }
         } while (m != MessageType::NONE);
 

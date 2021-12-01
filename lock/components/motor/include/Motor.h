@@ -9,6 +9,7 @@
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
 #include "esp_log.h"
+#include "driver/gpio.h"
 #include "driver/mcpwm.h"
 
 struct MotorConfig {
@@ -28,10 +29,13 @@ struct MotorConfig {
 
 class Motor {
     public:
-        void config(MotorConfig config);
+        void config(const MotorConfig &config);
 
         // Starts freertos task to step motor until completion
         void move_motor(int abs_degrees);
     private:
         MotorConfig config_;
+        gpio_num_t step_pin; 
+        gpio_num_t dir_pin; 
+        gpio_num_t enable_pin; 
 };
