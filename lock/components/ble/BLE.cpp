@@ -75,7 +75,7 @@ bool BLE::connectToFob() {
     scan->setActiveScan(true);
     fobScanSemaphore = xSemaphoreCreateBinary();
     scan->start(fobScanTimeSec);
-    if (xSemaphoreTake(fobScanSemaphore, pdMS_TO_TICKS(fobScanTimeSec * 1000 * 2)) ==
+    if (fobDevice == nullptr && xSemaphoreTake(fobScanSemaphore, pdMS_TO_TICKS(fobScanTimeSec * 1000 * 2)) ==
         pdFALSE) {
         ESP_LOGE("BLE", "Fob not found, semaphore timed out");
         return false;
@@ -193,9 +193,10 @@ NimBLEAdvertisedDevice* BLE::fobDevice = nullptr;
 void BLE::ScanCallbacks::onResult(NimBLEAdvertisedDevice* device) {
     if (device->isAdvertisingService(NimBLEUUID(FobServiceUUID))) {
         ESP_LOGI("BLE", "Found Fob: %s", device->getName().c_str());
-
-        xSemaphoreGive(fobScanSemaphore);
+        // Stop scan
         fobDevice = device;
+        ble->scan->stop();
+        xSemaphoreGive(fobScanSemaphore);
     }
 }
 
@@ -225,7 +226,7 @@ void BLE::fobNotify(NimBLERemoteCharacteristic* pRemoteCharacteristic, uint8_t* 
 
 void BLE::fobWrite(const char* data) {
     for (int i = 0; i < 4; i++) {
-        fobRxCharacteristics[i]->writeValue((const uint8_t*)(data + (i * 16)), 16);
+        fobTxCharacteristics[i]->writeValue((const uint8_t*)(data + (i * 16)), 16);
     }
 }
 
