@@ -224,16 +224,16 @@ void BLE::fobNotify(NimBLERemoteCharacteristic* pRemoteCharacteristic, uint8_t* 
     xSemaphoreGive(fobRecvSemaphore);
 }
 
-void BLE::fobWrite(const char* data) {
+void BLE::fobWrite(const uint8_t* data) {
     for (int i = 0; i < 4; i++) {
-        fobTxCharacteristics[i]->writeValue((const uint8_t*)(data + (i * 16)), 16);
+        fobTxCharacteristics[i]->writeValue(data + (i * 16), 16);
     }
 }
 
 SemaphoreHandle_t BLE::fobRecvSemaphore = nullptr;
 uint8_t BLE::fobRecvFlag = 0;
 
-bool BLE::fobRecv(char* out) {
+bool BLE::fobRecv(uint8_t* out) {
     fobRecvSemaphore = xSemaphoreCreateBinary();
     fobRecvFlag = 0;
     // Block until all rx characteristics have been read

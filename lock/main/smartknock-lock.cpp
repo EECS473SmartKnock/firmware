@@ -9,6 +9,7 @@
 #include "WifiWrap.h"
 #include "ulp_adc.h"
 #include "Motor.h"
+#include "FobAuth.h"
 
 // External Libraries
 #include "esp_log.h"
@@ -68,11 +69,19 @@ void app_main() {
     /* ------ BLE Fob test ---------- */
     // Comment below out if you dont have fob
     ble.init();
-    while (!ble.connectToFob());
-    ble.fobWrite("Hello world!");
-    char buffer[64];
+
+    /*while (!ble.connectToFob());
+    ble.fobWrite((const uint8_t*)"Hello world! This needs to be at least 64 bytes !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!");
+    uint8_t buffer[64];
     ble.fobRecv(buffer);
-    ESP_LOGI("BLE", "Received: %s", buffer);
+    ESP_LOGI("BLE", "Received: %s", buffer);*/
+
+    FobAuth fa("c38dec5ff37fbee973cc03e73d13757c537ad43a3ea41ced20193df66c337a4e3926d6d6e1af6e0738c2008fcde0a71ad9d22d394f8184c11116f68e719d96bd", "10001");
+    if(fa.doAuth(ble)) {
+        ESP_LOGI("BLE", "Auth successful!!");
+    } else {
+        ESP_LOGI("BLE", "Auth failed");
+    }
     // return;
     /* ------------------------------ */
 

@@ -1,3 +1,5 @@
+#pragma once
+
 #include <string>
 
 #include "NimBLEDevice.h"
@@ -78,8 +80,8 @@ class BLE {
     std::function<void(const std::string& ssid, const std::string& password)>
         onWifiCredentialsUpdated;
 
-    void fobWrite(const char* data);
-    bool fobRecv(char* out);
+    void fobWrite(const uint8_t* data);
+    bool fobRecv(uint8_t* out);
 
     static constexpr const int fobScanTimeSec = 15;
 
