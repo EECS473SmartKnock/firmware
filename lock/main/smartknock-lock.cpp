@@ -8,6 +8,7 @@
 #include "SmartKnockAPI.h"
 #include "WifiWrap.h"
 #include "ulp_adc.h"
+#include "esp_adc.h"
 #include "Motor.h"
 #include "FobAuth.h"
 
@@ -49,6 +50,7 @@ ULP ulp;
 NVSWrapper nvs;
 BLE ble;
 Motor stepper;
+EspAdc adc;
 /*  Initialize API Libraries    */
 static DeepSleep sleep_wrapper;
 static SmartKnockAPI api;
@@ -68,20 +70,21 @@ void task_publish_handler(void* pvParameters);
 void app_main() {
     /* ------ BLE Fob test ---------- */
     // Comment below out if you dont have fob
-    ble.init();
+    
+    // ble.init();
 
-    /*while (!ble.connectToFob());
-    ble.fobWrite((const uint8_t*)"Hello world! This needs to be at least 64 bytes !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!");
-    uint8_t buffer[64];
-    ble.fobRecv(buffer);
-    ESP_LOGI("BLE", "Received: %s", buffer);*/
+    // /*while (!ble.connectToFob());
+    // ble.fobWrite((const uint8_t*)"Hello world! This needs to be at least 64 bytes !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!");
+    // uint8_t buffer[64];
+    // ble.fobRecv(buffer);
+    // ESP_LOGI("BLE", "Received: %s", buffer);*/
 
-    FobAuth fa("c38dec5ff37fbee973cc03e73d13757c537ad43a3ea41ced20193df66c337a4e3926d6d6e1af6e0738c2008fcde0a71ad9d22d394f8184c11116f68e719d96bd", "10001");
-    if(fa.doAuth(ble)) {
-        ESP_LOGI("BLE", "Auth successful!!");
-    } else {
-        ESP_LOGI("BLE", "Auth failed");
-    }
+    // FobAuth fa("c38dec5ff37fbee973cc03e73d13757c537ad43a3ea41ced20193df66c337a4e3926d6d6e1af6e0738c2008fcde0a71ad9d22d394f8184c11116f68e719d96bd", "10001");
+    // if(fa.doAuth(ble)) {
+    //     ESP_LOGI("BLE", "Auth successful!!");
+    // } else {
+    //     ESP_LOGI("BLE", "Auth failed");
+    // }
     // return;
     /* ------------------------------ */
 
@@ -89,16 +92,16 @@ void app_main() {
 
     // Uncomment below if you want to test wifi manually
     
-    // std::string test_ssid = "ArthurZhang";
-    // std::string test_password = "arthurthesoccerball";
-    // std::string test_passphrase = "rand-pass-1234";
-    // nvs.set("ssid", test_ssid);
-    // nvs.set("password", test_password);
-    // nvs.set("passphrase", test_passphrase);
-    // nvs.commit();
-    // std::string temp_pass = nvs.get("passphrase");
+    std::string test_ssid = "ArthurZhang";
+    std::string test_password = "arthurthesoccerball";
+    std::string test_passphrase = "rand-pass-1234";
+    nvs.set("ssid", test_ssid);
+    nvs.set("password", test_password);
+    nvs.set("passphrase", test_passphrase);
+    nvs.commit();
+    std::string temp_pass = nvs.get("passphrase");
 
-    // ESP_LOGI("SmartKnock", "passphrase %s ", temp_pass.c_str());
+    ESP_LOGI("SmartKnock", "passphrase %s ", temp_pass.c_str());
     
 
     /*
@@ -220,8 +223,11 @@ void app_main() {
     }
 
     stepper.config(stepper_pins);
-
     */
+
+    /* Initialize ADC channels */
+    adc.config(ADC1_CHANNEL_5);
+
     /*  Setup Task Queue */
     // Prevent uC from sleeping
     task_sleep_sem = xSemaphoreCreateBinary();
@@ -298,7 +304,6 @@ void task_master_handler(void* pvParameters) {
                 break;
             }
             case StatPublishing: {
-                // Replace with this function and battery voltage for 0.1234 and num_knocks_placeholder
                 if (uxSemaphoreGetCount(task_queue_sem) < 1) {
                     state = Sleeping;
                 }
@@ -326,10 +331,11 @@ void task_publish_handler(void* pvParameters) {
         vTaskDelay(pdMS_TO_TICKS(100));
     }
     int num_knocks = stoi(nvs.get("num_knocks"));
+    float battery_voltage = adc.read_channels(ADC1_CHANNEL_5);
     ESP_LOGI("SmartKnock", " number knocks %i \n", num_knocks);
     
     std::string passphrase = nvs.get("passphrase");
-    api.send_message(passphrase, {0.1234, num_knocks});
+    api.send_message(passphrase, {battery_voltage, num_knocks});
     xSemaphoreTake(task_queue_sem, (TickType_t) 0);
 
     for (;;) {
