@@ -13,29 +13,27 @@
 #include "driver/mcpwm.h"
 
 struct MotorConfig {
-    // mcpwm_unit_t pwm_unit_num;
-    // mcpwm_io_signals_t pwm_output_channel;
-    // int gpio_output_num;
-    // mcpwm_timer_t pwm_timer;
-    // mcpwm_config_t pwm_config;
-
-    int gpio_sleep_pin;
-    int gpio_step_pin;
-    int gpio_ms_pins[3];
-    int gpio_dir_pin;
-    int gpio_enable_pin;
-    int gpio_reset_pin;
+    uint64_t gpio_sleep_pin;
+    uint64_t gpio_step_pin;
+    uint64_t gpio_dir_pin;
+    uint64_t gpio_enable_pin;
+    uint64_t gpio_reset_pin;
 };
 
 class Motor {
     public:
         void config(const MotorConfig &config);
 
+        void set_next_degrees(int abs_degrees) {
+            next_abs_degree_ = abs_degrees;
+        }
+
+        int get_next_degrees() {
+            return next_abs_degree_;
+        }
         // Starts freertos task to step motor until completion
         void move_motor(int abs_degrees);
     private:
         MotorConfig config_;
-        gpio_num_t step_pin; 
-        gpio_num_t dir_pin; 
-        gpio_num_t enable_pin; 
+        int next_abs_degree_;
 };

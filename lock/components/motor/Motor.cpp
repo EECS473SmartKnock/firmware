@@ -1,5 +1,7 @@
 #include "Motor.h"
 
+static const int STEPS_PER_REV  = 800;
+
 /**
  * @brief Sets up config info for motor
  * 
@@ -8,33 +10,68 @@
 void Motor::config(const MotorConfig &config) {
     // Configure GPIO pins as outputs
     config_ = config;
-    uint16_t pin_mask = 0;
-
-    pin_mask |= (1 << config_.gpio_sleep_pin);
-    pin_mask |= (1 << config_.gpio_step_pin);
-    pin_mask |= (1 << config_.gpio_ms_pins[0]);
-    pin_mask |= (1 << config_.gpio_ms_pins[1]);
-    pin_mask |= (1 << config_.gpio_ms_pins[2]);
-    pin_mask |= (1 << config_.gpio_dir_pin);
-    pin_mask |= (1 << config_.gpio_enable_pin);
-    pin_mask |= (1 << config_.gpio_reset_pin);
-
-    step_pin = (gpio_num_t)config_.gpio_step_pin; 
-    dir_pin = (gpio_num_t)config_.gpio_dir_pin; 
-    enable_pin = (gpio_num_t)config_.gpio_enable_pin;
-
-    gpio_config_t gpio_config_settings = {
-        .pin_bit_mask = pin_mask,
-        .mode = GPIO_MODE_OUTPUT,
-        .pull_up_en = GPIO_PULLUP_DISABLE,
-        .pull_down_en = GPIO_PULLDOWN_DISABLE,
-        .intr_type = GPIO_INTR_DISABLE
+    gpio_config_t io_conf;
+    // Set sleep
+    io_conf = {
+        BIT(config_.gpio_sleep_pin),
+        GPIO_MODE_OUTPUT,
+        GPIO_PULLUP_ENABLE, 
+        GPIO_PULLDOWN_DISABLE,
+        GPIO_INTR_DISABLE
     };
+    ESP_ERROR_CHECK(gpio_config(&io_conf));
 
-    gpio_config(&gpio_config_settings);
+    // Set step low default
+    io_conf = {
+        BIT(config_.gpio_step_pin),
+        GPIO_MODE_OUTPUT,
+        GPIO_PULLUP_DISABLE, 
+        GPIO_PULLDOWN_DISABLE,
+        GPIO_INTR_DISABLE
+    };
+    ESP_ERROR_CHECK(gpio_config(&io_conf));
 
-    // This is usually active low, may change
-    gpio_set_level(enable_pin, 1); 
+    // Set dir pin default
+    io_conf = {
+        BIT(config_.gpio_dir_pin),
+        GPIO_MODE_OUTPUT,
+        GPIO_PULLUP_DISABLE, 
+        GPIO_PULLDOWN_ENABLE,
+        GPIO_INTR_DISABLE
+    };
+    ESP_ERROR_CHECK(gpio_config(&io_conf));
+
+    // Set enable low deafault
+    io_conf = {
+        BIT(config_.gpio_enable_pin),
+        GPIO_MODE_OUTPUT,
+        GPIO_PULLUP_DISABLE, 
+        GPIO_PULLDOWN_ENABLE,
+        GPIO_INTR_DISABLE
+    };
+    ESP_ERROR_CHECK(gpio_config(&io_conf));
+
+    // Set reset high (not in reset)
+    io_conf = {
+        BIT(config_.gpio_reset_pin),
+        GPIO_MODE_OUTPUT,
+        GPIO_PULLUP_ENABLE, 
+        GPIO_PULLDOWN_DISABLE,
+        GPIO_INTR_DISABLE
+    };
+    ESP_ERROR_CHECK(gpio_config(&io_conf));
+
+    // Set reset pin high enable step inputs
+    ESP_ERROR_CHECK(gpio_set_level((gpio_num_t) config_.gpio_reset_pin, 1)); 
+
+    // Set gpio sleep high to turn on
+    ESP_ERROR_CHECK(gpio_set_level((gpio_num_t) config_.gpio_sleep_pin, 1)); 
+
+    // Set gpio step pin low to get ready for stepping
+    ESP_ERROR_CHECK(gpio_set_level((gpio_num_t) config_.gpio_step_pin, 0)); 
+
+    // Set gpio enable pin high to not enable
+    ESP_ERROR_CHECK(gpio_set_level((gpio_num_t) config_.gpio_enable_pin, 1)); 
 }
 
 /**
@@ -44,30 +81,26 @@ void Motor::config(const MotorConfig &config) {
  */
 void Motor::move_motor(int abs_degrees) {
 
+    // Enable (usually active low)
+    gpio_set_level((gpio_num_t) config_.gpio_enable_pin, 0);
+    
     // Set direction pin based off of degrees (+/-)
-    gpio_set_level(dir_pin, (abs_degrees > 0));  
+    gpio_set_level((gpio_num_t) config_.gpio_dir_pin, (abs_degrees > 0));  
 
-    int steps_per_revolution = 200; 
-    float degrees_per_step = 360.0/abs(steps_per_revolution);
+    float degrees_per_step = 360.0/abs(STEPS_PER_REV);
     int steps_to_complete = abs_degrees/degrees_per_step;
     
-    // need steps per revolution
-    // write step pin high
-    // delay 
-    // write step pin low
-    // delay 
-
-    // Enable (usually active low)
-    gpio_set_level(enable_pin, 0);
-
+    ESP_LOGI("Motor ", "moving %i steps\n", steps_to_complete);
+    
+    vTaskDelay(pdMS_TO_TICKS(1));
     for (int i = 0; i < steps_to_complete; i++) {
-        gpio_set_level(step_pin, 1); 
-        vTaskDelay(pdMS_TO_TICKS(2));
-        gpio_set_level(step_pin, 0);
-        vTaskDelay(pdMS_TO_TICKS(2));
+        gpio_set_level((gpio_num_t) config_.gpio_step_pin, 1); 
+        vTaskDelay(1);
+        gpio_set_level((gpio_num_t) config_.gpio_step_pin, 0);
+        vTaskDelay(1);
     }
 
-    gpio_set_level(enable_pin, 1);
-
+    // Disable chip
+    gpio_set_level((gpio_num_t) config_.gpio_enable_pin, 1);
 }
 

@@ -17,6 +17,6 @@ float EspAdc::read_channels(adc1_channel_t ch) {
     adc_reading /= ADC_NUMBER_OF_SAMPLES;
 
     // Convert adc reading to voltage in mV
-    float voltage = adc_reading * 0.001074f;
+    float voltage = adc_reading * 0.00293 * 1.13852; // first number is hardware cal, second is error cal using two point method
     return voltage;
 }
