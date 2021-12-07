@@ -53,38 +53,38 @@ MessageType SmartKnockAPI::get_incoming_message(const std::string &passphrase) {
     auto result = make_http_get_request(url.c_str());
     // ESP_LOGI(TAG, "got: %s", result.c_str());
 
-    std::istringstream response(result);
-    int message_id;
-    std::string type;
-    std::string hash;
+    // std::istringstream response(result);
+    // int message_id;
+    // std::string type;
+    // std::string hash;
 
-    if (NVSWrapper::getInstance()->exists("last_mid")) {
-        last_consumed_message_id = NVSWrapper::getInstance()->get<int>("last_mid");
-        ESP_LOGI(TAG, "loaded last_consumed_message_id: %d", last_consumed_message_id);
-    }
+    // if (NVSWrapper::getInstance()->exists("last_mid")) {
+    //     last_consumed_message_id = NVSWrapper::getInstance()->get<int>("last_mid");
+    //     ESP_LOGI(TAG, "loaded last_consumed_message_id: %d", last_consumed_message_id);
+    // }
 
-    while (response >> message_id >> type >> hash) {
-        if (message_id > last_consumed_message_id) {
-            last_consumed_message_id = message_id;
+    // while (response >> message_id >> type >> hash) {
+    //     if (message_id > last_consumed_message_id) {
+    //         last_consumed_message_id = message_id;
 
-            NVSWrapper::getInstance()->set<int>("last_mid", last_consumed_message_id);
-            NVSWrapper::getInstance()->commit();
-            ESP_LOGI(TAG, "stored last_consumed_message_id: %d",
-                     last_consumed_message_id);
+    //         NVSWrapper::getInstance()->set<int>("last_mid", last_consumed_message_id);
+    //         NVSWrapper::getInstance()->commit();
+    //         ESP_LOGI(TAG, "stored last_consumed_message_id: %d",
+    //                  last_consumed_message_id);
 
-            // verify hash
-            if (compute_hash(type + std::to_string(message_id) + passphrase) != hash) {
-                ESP_LOGE(TAG, "hash mismatch");
-                continue;
-            }
+    //         // verify hash
+    //         if (compute_hash(type + std::to_string(message_id) + passphrase) != hash) {
+    //             ESP_LOGE(TAG, "hash mismatch");
+    //             continue;
+    //         }
 
-            if (type == "LOCK") {
-                return MessageType::LOCK;
-            } else if (type == "UNLOCK") {
-                return MessageType::UNLOCK;
-            }
-        }
-    }
+    //         if (type == "LOCK") {
+    //             return MessageType::LOCK;
+    //         } else if (type == "UNLOCK") {
+    //             return MessageType::UNLOCK;
+    //         }
+    //     }
+    // }
 
     return MessageType::NONE;
 }
@@ -104,7 +104,7 @@ void SmartKnockAPI::send_message(const std::string &passphrase, const LockMessag
 }
 
 std::string SmartKnockAPI::make_http_get_request(const char *url) {
-    char local_response_buffer[SmartKnockAPI::http_response_max_size] = {0};
+    char local_response_buffer[SmartKnockAPI::http_response_max_size]= { 0 };
 
     esp_http_client_config_t config{};
     config.url = url;

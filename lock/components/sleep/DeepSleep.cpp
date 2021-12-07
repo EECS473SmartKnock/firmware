@@ -26,14 +26,15 @@ void DeepSleep::config(SleepConfig config)
     // ESP_ERROR_CHECK(esp_sleep_enable_timer_wakeup(config.wakeup_period_us));
     // Enables wakeup from RTC pin source
     // ESP_ERROR_CHECK(esp_sleep_enable_ext0_wakeup(config.wakeup_pin, config.wakeup_pin_active_level));
-    wifi_wrapper_ = config.wifi_wrapper;
+    config_ = config;
 }
 
 void DeepSleep::sleep()
 {
     // Disable Wifi
-    wifi_wrapper_->disconnect();
-    // TODO: Disable BLE
+    config_.wifi_wrapper->disconnect();
+    // Disable BLE
+    // config_.ble_wrapper->deinit();
 
     // Starts Deep Sleep
     esp_deep_sleep_start();

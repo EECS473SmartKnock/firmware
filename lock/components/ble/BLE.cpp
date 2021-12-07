@@ -15,6 +15,11 @@ void BLE::init() {
     instance = this;
 }
 
+void BLE::deinit() {
+    NimBLEDevice::deinit(true);
+    instance = this;
+}
+
 void BLE::startServer() {
     server = NimBLEDevice::createServer();
     appService = server->createService(AppServiceUUID);

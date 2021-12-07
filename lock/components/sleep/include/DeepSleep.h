@@ -10,6 +10,9 @@
 
 // Custom Components
 #include "WifiWrap.h"
+#include "Ble.h"
+#include "esp_adc.h"
+#include "ulp_adc.h"
 
 #ifdef __cplusplus
 extern "C" {
@@ -17,6 +20,7 @@ extern "C" {
 
 struct SleepConfig {
     WifiWrap* wifi_wrapper;
+    BLE* ble_wrapper;
     gpio_num_t wakeup_pin;
     uint8_t wakeup_pin_active_level;
     uint64_t wakeup_period_us;
@@ -37,7 +41,7 @@ class DeepSleep {
         void print_wakeup_reason();
         bool is_wakeup_by_reset();
     private:
-        WifiWrap* wifi_wrapper_;
+        SleepConfig config_;
 };
 
 #ifdef __cplusplus

@@ -20,7 +20,7 @@ struct LockMessage {
 class SmartKnockAPI {
    public:
     static constexpr const char* api_base_url = "https://smartknock.xyz/";
-    static constexpr const int http_response_max_size = 1024;
+    static constexpr const int http_response_max_size = 512;
     char* url = nullptr;
     uint32_t url_len = 0;
     MessageType get_incoming_message(const std::string &passphrase);

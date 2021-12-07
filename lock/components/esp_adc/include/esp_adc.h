@@ -23,6 +23,8 @@ class EspAdc {
     public:
         void config(adc1_channel_t ch);
 
+        void disconnect();
+
         float read_channels(adc1_channel_t ch);
 };
 

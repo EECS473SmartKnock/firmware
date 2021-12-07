@@ -8,6 +8,10 @@ void EspAdc::config(adc1_channel_t ch) {
 
 }
 
+void EspAdc::disconnect() {
+    adc1_ulp_enable();
+}
+
 // Returns number of channels read
 float EspAdc::read_channels(adc1_channel_t ch) {
     uint32_t adc_reading = 0;

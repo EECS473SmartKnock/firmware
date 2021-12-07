@@ -23,23 +23,23 @@ void ULP::enable_ulp_monitoring(ULPConfig config) {
          ulp_load_binary(0, ulp_main_bin_start, (ulp_main_bin_end-ulp_main_bin_start) / sizeof(uint32_t))
      );
 
-    rtc_gpio_init(config.ulp_pin1);
-    rtc_gpio_set_direction(config.ulp_pin1, RTC_GPIO_MODE_OUTPUT_ONLY);
+    ESP_ERROR_CHECK(rtc_gpio_init(config.ulp_pin1));
+    ESP_ERROR_CHECK(rtc_gpio_set_direction(config.ulp_pin1, RTC_GPIO_MODE_OUTPUT_ONLY));
 
-    rtc_gpio_init(config.ulp_pin2);
-    rtc_gpio_set_direction(config.ulp_pin2, RTC_GPIO_MODE_OUTPUT_ONLY);
+    ESP_ERROR_CHECK(rtc_gpio_init(config.ulp_pin2));
+    ESP_ERROR_CHECK(rtc_gpio_set_direction(config.ulp_pin2, RTC_GPIO_MODE_OUTPUT_ONLY));
 
     /* Configure ADC channel */
     /* Note: when changing channel here, also change 'adc_channel' constant
         in adc.S */
-    adc1_config_channel_atten(ADC1_CHANNEL_6, ADC_ATTEN_DB_11);
-    adc1_config_width(ADC_WIDTH_BIT_12);
+    ESP_ERROR_CHECK(adc1_config_channel_atten(ADC1_CHANNEL_6, ADC_ATTEN_DB_11));
+    ESP_ERROR_CHECK(adc1_config_width(ADC_WIDTH_BIT_12));
     adc1_ulp_enable();
-    ulp_low_threshold = 1;//0.001 * (4095 / 3.3);  // 2.5 volt lower bound
-    ulp_high_threshold = 1;//0.001 * (4095 / 3.3);   // 2.5 volts upper bound
+    ulp_low_threshold = 1;//0.1 * (4095 / 3.3);  // 2.5 volt lower bound
+    ulp_high_threshold = 1;//0.1 * (4095 / 3.3);   // 2.5 volts upper bound
 
     /* Set ULP wake up period to 100ms */
-    ulp_set_wakeup_period(0, 1 * 1000);
+    ESP_ERROR_CHECK(ulp_set_wakeup_period(0, 1 * 1000));
 }
 
 void ULP::start_ulp_monitoring() {
