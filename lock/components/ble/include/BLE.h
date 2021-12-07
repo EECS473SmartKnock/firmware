@@ -60,6 +60,7 @@ class BLE {
    public:
     BLE() : appCallbacks(this), scanCallbacks(this) {};
     void init();
+    void deinit();
     void startServer();
     void stopServer();
 

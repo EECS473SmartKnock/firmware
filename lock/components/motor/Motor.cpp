@@ -1,6 +1,7 @@
 #include "Motor.h"
 
-static const int STEPS_PER_REV  = 800;
+static const int STEPS_PER_REV  = 3100;
+PRIVILEGED_DATA static portMUX_TYPE xTaskQueueMutex = portMUX_INITIALIZER_UNLOCKED;
 
 /**
  * @brief Sets up config info for motor
@@ -95,9 +96,11 @@ void Motor::move_motor(int abs_degrees) {
     vTaskDelay(pdMS_TO_TICKS(1));
     for (int i = 0; i < steps_to_complete; i++) {
         gpio_set_level((gpio_num_t) config_.gpio_step_pin, 1); 
-        vTaskDelay(1);
+        for (int i = 0; i < 1000; ++i) {asm("nop");}
+        // vTaskDelay(1);
         gpio_set_level((gpio_num_t) config_.gpio_step_pin, 0);
-        vTaskDelay(1);
+        for (int i = 0; i < 1000; ++i) {asm("nop");}
+        // vTaskDelay(1);
     }
 
     // Disable chip
