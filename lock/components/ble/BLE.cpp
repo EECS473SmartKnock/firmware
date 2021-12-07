@@ -72,6 +72,7 @@ void BLE::stopServer() { server->getAdvertising()->stop(); }
 SemaphoreHandle_t BLE::fobScanSemaphore = nullptr;
 
 bool BLE::connectToFob() {
+    /*
     // Scan for Fob and connect if possible. If not found within a timeout, return false.
     scan = NimBLEDevice::getScan();
     scan->setAdvertisedDeviceCallbacks(&scanCallbacks);
@@ -88,11 +89,15 @@ bool BLE::connectToFob() {
         ESP_LOGE("BLE", "Fob not found, device wasn't set");
         return false;
     }
-    ESP_LOGI("BLE", "Connecting to Fob");
+    ESP_LOGI("BLE", "Connecting to Fob");*/
+
     client = NimBLEDevice::createClient();
     // client->setClientCallbacks(&);
 
-    if (!client->connect(fobDevice)) {
+    NimBLEAddress fobAddressFixed("db:71:98:e6:84:c4", 1);
+
+    if (!client->connect(fobAddressFixed)) { 
+    //if(!client->connect(fobDevice)) {
         ESP_LOGE("BLE", "Fob connection failed");
         return false;
     }
@@ -103,7 +108,7 @@ bool BLE::connectToFob() {
     }
 
     ESP_LOGE("BLE", "Fob connected: %s, RSSI: %d",
-             client->getPeerAddress().toString().c_str(), fobDevice->getRSSI());
+             client->getPeerAddress().toString().c_str(), -1); //fobDevice->getRSSI());
 
     fobService = client->getService(FobServiceUUID);
     if (fobService == nullptr) {
@@ -111,7 +116,38 @@ bool BLE::connectToFob() {
         return false;
     }
 
-    for (int i = 0; i < 4; i++) {
+    auto servicechars = *fobService->getCharacteristics(true);
+    for(auto& c: servicechars) {
+        auto uuidstr = c->getUUID().toString();
+        const char* cuuid = uuidstr.c_str();
+        //ESP_LOGE("lalala", "current char: %s", cuuid);
+        for(int i = 0; i < 4; i++) {
+            if(strcmp(FobTxCharacteristicUUIDs[i], cuuid) == 0) {
+                //ESP_LOGE("BLE", "Found TX char %d", i);
+                fobTxCharacteristics[i] = c;
+                break;
+            }
+            if(strcmp(FobRxCharacteristicUUIDs[i], cuuid) == 0) {
+                //ESP_LOGE("BLE", "Found RX char %d", i);
+                fobRxCharacteristics[i] = c;
+                fobRxCharacteristics[i]->subscribe(true, &fobNotify);
+                break;
+            }
+        }
+    }
+
+    for(int i = 0; i < 4; i++) {
+        if(!fobTxCharacteristics[i]) {
+            ESP_LOGE("BLE", "Couldn't find TX char %d, fail", i);
+            return false;
+        }
+        if(!fobRxCharacteristics[i]) {
+            ESP_LOGE("BLE", "Couldn't find RX char %d, fail", i);
+            return false;
+        }
+    }
+
+    /*for (int i = 0; i < 4; i++) {
         fobTxCharacteristics[i] =
             fobService->getCharacteristic(FobTxCharacteristicUUIDs[i]);
         fobRxCharacteristics[i] =
@@ -125,7 +161,7 @@ bool BLE::connectToFob() {
             ESP_LOGE("BLE", "Fob characteristic not writable");
             return false;
         }
-    }
+    }*/
 
     return true;
 }

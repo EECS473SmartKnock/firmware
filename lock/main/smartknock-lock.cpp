@@ -54,6 +54,8 @@ BLE ble;
 Motor stepper;
 EspAdc adc;
 FobAuth fa("c38dec5ff37fbee973cc03e73d13757c537ad43a3ea41ced20193df66c337a4e3926d6d6e1af6e0738c2008fcde0a71ad9d22d394f8184c11116f68e719d96bd", "10001");
+//FobAuth fa("c38dec5ff37fbee973cc03e73d13757c537ad43a3ea41ced20193df66c337a4e", "10001");
+
 /*  Initialize API Libraries    */
 static DeepSleep sleep_wrapper;
 SmartKnockAPI api;
@@ -76,22 +78,23 @@ void app_main() {
     /* ------ BLE Fob test ---------- */
     // Comment below out if you dont have fob
     
-    // ble.init();
+    ble.init();
 
     /*while (!ble.connectToFob());
     ble.fobWrite((const uint8_t*)"Hello world! This needs to be at least 64 bytes !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!");
     uint8_t buffer[64];
     ble.fobRecv(buffer);
     ESP_LOGI("BLE", "Received: %s", buffer);*/
-    // if(fa.doAuth(ble)) {
-    //     ESP_LOGI("BLE", "Auth successful!!");
-    //     stepper.set_next_degrees(90);
-    //     xSemaphoreGive(task_move_motor_sem); // releases motor handler task
-    // } else {
-    //     ESP_LOGI("BLE", "Auth failed");
-    // }
 
-    // return;
+    if(fa.doAuth(ble)) {
+        ESP_LOGE("BLE", "Auth successful!!");
+        //stepper.set_next_degrees(90);
+        //task_motor_handler(nullptr)
+    } else {
+        ESP_LOGE("BLE", "Auth failed");
+    }
+
+    //return;
     /* ------------------------------ */
 
     nvs.init();
@@ -100,13 +103,13 @@ void app_main() {
 
     // Uncomment below if you want to test wifi manually
     
-    // std::string test_ssid = "ArthurZhang";
-    // std::string test_password = "arthurthesoccerball";
-    // std::string test_passphrase = "rand-pass-1234";
-    // nvs.set("ssid", test_ssid);
-    // nvs.set("password", test_password);
-    // nvs.set("passphrase", test_passphrase);
-    // nvs.commit();
+    std::string test_ssid = "CoLiberati0n";
+    std::string test_password = "CatH0use";
+    std::string test_passphrase = "CatH0use";
+    nvs.set("ssid", test_ssid);
+    nvs.set("password", test_password);
+    nvs.set("passphrase", test_passphrase);
+    nvs.commit();
     std::string temp_pass = nvs.get("passphrase");
 
     ESP_LOGI("SmartKnock", "passphrase %s ", temp_pass.c_str());
