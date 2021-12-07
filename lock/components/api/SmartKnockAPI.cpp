@@ -9,6 +9,7 @@
 #include "freertos/event_groups.h"
 #include "freertos/task.h"
 #include "mbedtls/sha256.h"
+#include "esp_tls.h"
 
 #define TAG "api"
 
@@ -53,38 +54,40 @@ MessageType SmartKnockAPI::get_incoming_message(const std::string &passphrase) {
     auto result = make_http_get_request(url.c_str());
     // ESP_LOGI(TAG, "got: %s", result.c_str());
 
-    // std::istringstream response(result);
-    // int message_id;
-    // std::string type;
-    // std::string hash;
+    std::istringstream response(result);
+    int message_id;
+    std::string type;
+    std::string hash;
 
-    // if (NVSWrapper::getInstance()->exists("last_mid")) {
-    //     last_consumed_message_id = NVSWrapper::getInstance()->get<int>("last_mid");
-    //     ESP_LOGI(TAG, "loaded last_consumed_message_id: %d", last_consumed_message_id);
-    // }
+    if (NVSWrapper::getInstance()->exists("last_mid")) {
+        last_consumed_message_id = NVSWrapper::getInstance()->get<int>("last_mid");
+        ESP_LOGI(TAG, "loaded last_consumed_message_id: %d", last_consumed_message_id);
+    } else {
+        last_consumed_message_id = 0;
+    }
 
-    // while (response >> message_id >> type >> hash) {
-    //     if (message_id > last_consumed_message_id) {
-    //         last_consumed_message_id = message_id;
+    while (response >> message_id >> type >> hash) {
+        if (message_id > last_consumed_message_id) {
+            last_consumed_message_id = message_id;
 
-    //         NVSWrapper::getInstance()->set<int>("last_mid", last_consumed_message_id);
-    //         NVSWrapper::getInstance()->commit();
-    //         ESP_LOGI(TAG, "stored last_consumed_message_id: %d",
-    //                  last_consumed_message_id);
+            NVSWrapper::getInstance()->set<int>("last_mid", last_consumed_message_id);
+            NVSWrapper::getInstance()->commit();
+            ESP_LOGI(TAG, "stored last_consumed_message_id: %d",
+                     last_consumed_message_id);
 
-    //         // verify hash
-    //         if (compute_hash(type + std::to_string(message_id) + passphrase) != hash) {
-    //             ESP_LOGE(TAG, "hash mismatch");
-    //             continue;
-    //         }
+            // verify hash
+            if (compute_hash(type + std::to_string(message_id) + passphrase) != hash) {
+                ESP_LOGE(TAG, "hash mismatch");
+                continue;
+            }
 
-    //         if (type == "LOCK") {
-    //             return MessageType::LOCK;
-    //         } else if (type == "UNLOCK") {
-    //             return MessageType::UNLOCK;
-    //         }
-    //     }
-    // }
+            if (type == "LOCK") {
+                return MessageType::LOCK;
+            } else if (type == "UNLOCK") {
+                return MessageType::UNLOCK;
+            }
+        }
+    }
 
     return MessageType::NONE;
 }
@@ -104,12 +107,12 @@ void SmartKnockAPI::send_message(const std::string &passphrase, const LockMessag
 }
 
 std::string SmartKnockAPI::make_http_get_request(const char *url) {
-    char local_response_buffer[SmartKnockAPI::http_response_max_size]= { 0 };
+    // char local_response_buffer[SmartKnockAPI::http_response_max_size] = {0};
 
     esp_http_client_config_t config{};
     config.url = url;
     config.event_handler = _http_event_handler;
-    config.user_data = local_response_buffer;
+    // config.user_data = local_response_buffer;
 
     esp_http_client_handle_t client = esp_http_client_init(&config);
 
@@ -123,18 +126,18 @@ std::string SmartKnockAPI::make_http_get_request(const char *url) {
         ESP_LOGE(TAG, "HTTP GET request failed: %s", esp_err_to_name(err));
     }
     esp_http_client_cleanup(client);
-    // ESP_LOGI(TAG, "Received: %s", local_response_buffer);
+    // ESP_LOGI(TAG, "Received: %s", http_response.c_str());
     // ESP_LOG_BUFFER_HEX(TAG, local_response_buffer, strlen(local_response_buffer));
-    return local_response_buffer;
+    return http_response;
 }
 
 std::string SmartKnockAPI::make_http_post_request(const char *url, const char *data) {
-    char local_response_buffer[SmartKnockAPI::http_response_max_size] = {0};
+    // char local_response_buffer[SmartKnockAPI::http_response_max_size] = {0};
 
     esp_http_client_config_t config{};
     config.url = url;
     config.event_handler = _http_event_handler;
-    config.user_data = local_response_buffer;
+    // config.user_data = local_response_buffer;
 
     esp_http_client_handle_t client = esp_http_client_init(&config);
 
@@ -151,9 +154,12 @@ std::string SmartKnockAPI::make_http_post_request(const char *url, const char *d
         ESP_LOGE(TAG, "HTTP POST request failed: %s", esp_err_to_name(err));
     }
     esp_http_client_cleanup(client);
-    // ESP_LOGI(TAG, "Received: %s", local_response_buffer);
-    return local_response_buffer;
+
+    // ESP_LOGI(TAG, "Received: %s", http_response.c_str());
+    return http_response;
 }
+
+std::string SmartKnockAPI::http_response = "";
 
 esp_err_t SmartKnockAPI::_http_event_handler(esp_http_client_event_t *evt) {
     static char
@@ -183,12 +189,13 @@ esp_err_t SmartKnockAPI::_http_event_handler(esp_http_client_event_t *evt) {
             if (!esp_http_client_is_chunked_response(evt->client)) {
                 // If user_data buffer is configured, copy the response into the buffer
                 if (evt->user_data) {
-                    memcpy((char *)evt->user_data + output_len, evt->data, evt->data_len);
+                    configASSERT(0 && "user_data not supported due to memory issues");
+                    memcpy((char *)evt->user_data + output_len, evt->data, std::max(std::min(evt->data_len, SmartKnockAPI::http_response_max_size - output_len), 0));
                 } else {
                     if (output_buffer == NULL) {
                         output_buffer = (char *)malloc(
                             esp_http_client_get_content_length(evt->client));
-                        output_len = 0;\
+                        output_len = 0;
                         if (output_buffer == NULL) {
                             ESP_LOGE(TAG, "Failed to allocate memory for output buffer");
                             return ESP_FAIL;
@@ -204,27 +211,32 @@ esp_err_t SmartKnockAPI::_http_event_handler(esp_http_client_event_t *evt) {
             ESP_LOGD(TAG, "HTTP_EVENT_ON_FINISH");
             if (output_buffer != NULL) {
                 // Response is accumulated in output_buffer. Uncomment the below line to
-                // print the accumulated response ESP_LOG_BUFFER_HEX(TAG, output_buffer,
+                // print the accumulated response 
+                // ESP_LOG_BUFFER_HEX(TAG, output_buffer,
                 // output_len);
+                std::string result(output_buffer, output_len);
+                std::swap(http_response, result);
+
                 free(output_buffer);
                 output_buffer = NULL;
             }
             output_len = 0;
             break;
-        case HTTP_EVENT_DISCONNECTED:
+        case HTTP_EVENT_DISCONNECTED: {
             ESP_LOGI(TAG, "HTTP_EVENT_DISCONNECTED");
-            // int mbedtls_err = 0;
-            // esp_err_t err = esp_tls_get_and_clear_last_error(evt->data, &mbedtls_err,
-            // NULL); if (err != 0) {
-            //     if (output_buffer != NULL) {
-            //         free(output_buffer);
-            //         output_buffer = NULL;
-            //     }
-            //     output_len = 0;
-            //     ESP_LOGI(TAG, "Last esp error code: 0x%x", err);
-            //     ESP_LOGI(TAG, "Last mbedtls failure: 0x%x", mbedtls_err);
-            // }
-            break;
+            int mbedtls_err = 0;
+            esp_err_t err =
+                esp_tls_get_and_clear_last_error((esp_tls_error_handle_t)evt->data, &mbedtls_err, NULL);
+            if (err != 0) {
+                if (output_buffer != NULL) {
+                    free(output_buffer);
+                    output_buffer = NULL;
+                }
+                output_len = 0;
+                ESP_LOGI(TAG, "Last esp error code: 0x%x", err);
+                ESP_LOGI(TAG, "Last mbedtls failure: 0x%x", mbedtls_err);
+            }
+        } break;
     }
     return ESP_OK;
 }

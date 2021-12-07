@@ -35,4 +35,5 @@ class SmartKnockAPI {
     std::string make_http_get_request(const char* url);
     std::string make_http_post_request(const char* url, const char* data);
     static esp_err_t _http_event_handler(esp_http_client_event_t* evt);
+    static std::string http_response;
 };
