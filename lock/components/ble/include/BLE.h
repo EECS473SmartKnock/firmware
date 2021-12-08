@@ -65,6 +65,7 @@ class BLE {
     void stopServer();
 
     bool connectToFob();
+    void disconnectFromFob();
     void setWifiSSID(const std::string& ssid);
     void setWifiPassword(const std::string& password);
 

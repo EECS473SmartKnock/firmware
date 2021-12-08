@@ -24,6 +24,7 @@ bool FobAuth::doAuth(BLE& ble) {
     //ESP_LOGE("FOBAUTH", "Fob write done, receiving");
     ble.fobRecv(buf);
     //ESP_LOGE("FOBAUTH", "Fob receive done, authenticating");
+    ble.disconnectFromFob();
 
     bdConvFromOctets(x, buf, RSA_SIZE_BYTES);
     bdModExp(y, x, PUBLIC_EXPONENT, MODULUS);

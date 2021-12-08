@@ -3,22 +3,22 @@
 // Internal Libraries
 #include "BLE.h"
 #include "DeepSleep.h"
+#include "FobAuth.h"
+#include "Motor.h"
 #include "NVSWrapper.h"
 #include "NimBLEDevice.h"
 #include "SmartKnockAPI.h"
 #include "WifiWrap.h"
-#include "ulp_adc.h"
 #include "esp_adc.h"
-#include "Motor.h"
-#include "FobAuth.h"
+#include "ulp_adc.h"
 
 // External Libraries
+#include "driver/gpio.h"
 #include "esp_log.h"
 #include "freertos/FreeRTOS.h"
 #include "freertos/semphr.h"
 #include "freertos/task.h"
 #include "nvs_flash.h"
-#include "driver/gpio.h"
 
 // STL libraries
 #include <string>
@@ -32,17 +32,21 @@ void app_main();
 #define GLOBAL_CPU_CORE_0 0
 #define GLOBAL_CPU_CORE_1 1
 
+static constexpr const char* SMARTKNOCK_STATE_KEY = "lock_state";
+static constexpr const int SMARTKNOCK_LOCK_STATE = 0;
+static constexpr const int SMARTKNOCK_UNLOCK_STATE = 1;
+
+static constexpr const int LOCK_TO_UNLOCK_ANGLE = 120;
+static constexpr const int UNLOCK_TO_LOCK_ANGLE = -120;
+
+void stepper_lock_helper(MessageType m = MessageType::NONE);
+
 #define GLOBAL_MAX_NUMBER_TASKS 3
 
 // Master Task State Machine
-enum Master_State {
-    Initial,
-    HandleRequests,
-    StatPublishing,
-    Waiting,
-    Sleeping
-};
-static const char * State_Map[] = { "Initial", "HandleRequests", "StatPublishing", "Waiting", "Sleeping" };
+enum Master_State { Initial, HandleRequests, StatPublishing, Waiting, Sleeping };
+static const char* State_Map[] = {"Initial", "HandleRequests", "StatPublishing",
+                                  "Waiting", "Sleeping"};
 
 SemaphoreHandle_t task_queue_sem;
 SemaphoreHandle_t task_sleep_sem;
@@ -53,17 +57,22 @@ NVSWrapper nvs;
 BLE ble;
 Motor stepper;
 EspAdc adc;
-FobAuth fa("c38dec5ff37fbee973cc03e73d13757c537ad43a3ea41ced20193df66c337a4e3926d6d6e1af6e0738c2008fcde0a71ad9d22d394f8184c11116f68e719d96bd", "10001");
-//FobAuth fa("c38dec5ff37fbee973cc03e73d13757c537ad43a3ea41ced20193df66c337a4e", "10001");
-// FobAuth fa("00bb41cb594985b095f2506037019d1dc97c8033b8fb8f9b1629a5adfbeecbb0f406cf5cf140ec3ed53f81c15df584ad22a22196131e0c7f6c6766dd804e9b2681", "10001");
-
+FobAuth fa(
+    "c38dec5ff37fbee973cc03e73d13757c537ad43a3ea41ced20193df66c337a4e3926d6d6e1af6e0738c2"
+    "008fcde0a71ad9d22d394f8184c11116f68e719d96bd",
+    "10001");
+// FobAuth fa("c38dec5ff37fbee973cc03e73d13757c537ad43a3ea41ced20193df66c337a4e",
+// "10001");
+// FobAuth
+// fa("00bb41cb594985b095f2506037019d1dc97c8033b8fb8f9b1629a5adfbeecbb0f406cf5cf140ec3ed53f81c15df584ad22a22196131e0c7f6c6766dd804e9b2681",
+// "10001");
 
 /*  Initialize API Libraries    */
 static DeepSleep sleep_wrapper;
 SmartKnockAPI api;
 
 // std::string passphrase = "";  // TODO: this should be set by the setup process and
-                              // saved in non-volatile storage
+// saved in non-volatile storage
 // Global Defines Tasks
 
 void task_fob_handler(void* pvParameters);
@@ -81,12 +90,12 @@ void task_motor_handler(void* pvParameters);
 void app_main() {
     /* ------ BLE Fob test ---------- */
     // Comment below out if you dont have fob
-    
+
     // ble.init();
 
     /*while (!ble.connectToFob());
-    ble.fobWrite((const uint8_t*)"Hello world! This needs to be at least 64 bytes !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!");
-    uint8_t buffer[64];
+    ble.fobWrite((const uint8_t*)"Hello world! This needs to be at least 64 bytes
+    !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!"); uint8_t buffer[64];
     ble.fobRecv(buffer);
     ESP_LOGI("BLE", "Received: %s", buffer);*/
 
@@ -94,7 +103,7 @@ void app_main() {
     //     GPIO_NUM_17,
     //     GPIO_NUM_18,
     //     GPIO_NUM_21,
-    //     GPIO_NUM_22, 
+    //     GPIO_NUM_22,
     //     GPIO_NUM_19
     // };
     // stepper.config(stepper_pins);
@@ -106,7 +115,7 @@ void app_main() {
     //     ESP_LOGE("BLE", "Auth failed");
     // }
 
-    //return;
+    // return;
     /* ------------------------------ */
 
     nvs.init();
@@ -114,7 +123,7 @@ void app_main() {
     // nvs.commit();
 
     // Uncomment below if you want to test wifi manually
-    
+
     // std::string test_ssid = "ArthurZhang";
     // std::string test_password = "arthurthes";
     // std::string test_passphrase = "CatH0use";
@@ -125,7 +134,6 @@ void app_main() {
     // std::string temp_pass = nvs.get("passphrase");
 
     // ESP_LOGI("SmartKnock", "passphrase %s ", temp_pass.c_str());
-    
 
     /*
 
@@ -139,10 +147,18 @@ void app_main() {
     submit a hash(ssid+password+passphrase) from the app.
 
     */
+
+    /* Check if lock state exists, if not default to locked */
+    if (!nvs.exists(SMARTKNOCK_STATE_KEY)) {
+        nvs.set(SMARTKNOCK_STATE_KEY, SMARTKNOCK_LOCK_STATE);
+        nvs.commit();
+    }
+
     bool is_setup = nvs.existsStr("passphrase");
     if (is_setup) {
         std::string passphrase = nvs.get("passphrase");
-        ESP_LOGI("SmartKnock", "Lock is set up and ready to go! Passphrase: %s", passphrase.c_str());
+        ESP_LOGI("SmartKnock", "Lock is set up and ready to go! Passphrase: %s",
+                 passphrase.c_str());
     } else {
         ESP_LOGI("SmartKnock", "Lock is not set up. Starting setup process...");
     }
@@ -187,7 +203,8 @@ void app_main() {
 
     WifiWrap wifi_wrapper;
 
-    ESP_LOGI("SmartKnock", "Connecting to WiFi: %s with password %s", ssid.c_str(), password.c_str());
+    ESP_LOGI("SmartKnock", "Connecting to WiFi: %s with password %s", ssid.c_str(),
+             password.c_str());
 
     WifiPassHeader header{ssid.c_str(), ssid.length(), password.c_str(),
                           password.length()};
@@ -216,8 +233,6 @@ void app_main() {
         esp_restart();
     };
 
-    ble.startServer();
-
     if (sleep_wrapper.is_wakeup_by_reset()) {
         // Reset NVS if it was a wakeup by reset (not from deep sleep)
         ESP_LOGI("SmartKnock", "Wakeup by reset");
@@ -234,14 +249,9 @@ void app_main() {
     };
     sleep_wrapper.config(sleep_config);
     sleep_wrapper.print_wakeup_reason();
-    
-    MotorConfig stepper_pins = {
-        GPIO_NUM_17,
-        GPIO_NUM_18,
-        GPIO_NUM_21,
-        GPIO_NUM_22, 
-        GPIO_NUM_19
-    };
+
+    MotorConfig stepper_pins = {GPIO_NUM_17, GPIO_NUM_18, GPIO_NUM_21, GPIO_NUM_22,
+                                GPIO_NUM_19};
 
     stepper.config(stepper_pins);
 
@@ -251,32 +261,35 @@ void app_main() {
     /*  Setup Task Queue */
     // Prevent motor task from running
     task_move_motor_sem = xSemaphoreCreateBinary();
-    xSemaphoreTake(task_move_motor_sem, ( TickType_t ) 0);
+    xSemaphoreTake(task_move_motor_sem, (TickType_t)0);
 
     // Prevent uC from sleeping
     task_sleep_sem = xSemaphoreCreateBinary();
-    xSemaphoreTake(task_sleep_sem, ( TickType_t ) 0);
+    xSemaphoreTake(task_sleep_sem, (TickType_t)0);
     // Confirm minimum number of scans are completed
-    task_queue_sem = xSemaphoreCreateCounting(GLOBAL_MAX_NUMBER_TASKS, GLOBAL_MAX_NUMBER_TASKS);
-    for (int i = 0; i < GLOBAL_MAX_NUMBER_TASKS; ++i) { xSemaphoreGive(task_queue_sem); }
+    task_queue_sem =
+        xSemaphoreCreateCounting(GLOBAL_MAX_NUMBER_TASKS, GLOBAL_MAX_NUMBER_TASKS);
+    for (int i = 0; i < GLOBAL_MAX_NUMBER_TASKS; ++i) {
+        xSemaphoreGive(task_queue_sem);
+    }
 
     // TODO: start master task
     BaseType_t xTaskMaster;
     TaskHandle_t xMasterHandle = NULL;
-    xTaskMaster = xTaskCreatePinnedToCore(
-        task_master_handler, "MasterHandler", GLOBAL_STACK_SIZE, 
-        nullptr, 0, &xMasterHandle, GLOBAL_CPU_CORE_0
-    );
+    xTaskMaster =
+        xTaskCreatePinnedToCore(task_master_handler, "MasterHandler", GLOBAL_STACK_SIZE,
+                                nullptr, 0, &xMasterHandle, GLOBAL_CPU_CORE_0);
 }
 
 void task_master_handler(void* pvParameters) {
     configASSERT(pvParameters == nullptr);
 
     BaseType_t xTaskAPIReturned, xTaskSleep, xTaskPublishStats, xTaskFobHandle;
-    TaskHandle_t xAPIHandle = NULL, xSleepHandle = NULL, xPublishHandle = NULL, xFobHandle = NULL;
+    TaskHandle_t xAPIHandle = NULL, xSleepHandle = NULL, xPublishHandle = NULL,
+                 xFobHandle = NULL;
     esp_sleep_wakeup_cause_t sleep_wakeup_reason = sleep_wrapper.get_wakeup_reason();
     Master_State state = Initial;
-    TickType_t xLastWakeTime, xFunctionStartTime;
+    TickType_t xLastWakeTime, xFunctionStartTime, xWaitStartTime;
 
     int num_knocks = 0;
     if (!nvs.existsStr("num_knocks")) {
@@ -285,12 +298,12 @@ void task_master_handler(void* pvParameters) {
     }
 
     // xTaskSleep = xTaskCreatePinnedToCore(
-    //     task_sleep_handler, "SleepHandler", GLOBAL_STACK_SIZE, 
+    //     task_sleep_handler, "SleepHandler", GLOBAL_STACK_SIZE,
     //     &sleep_wrapper, 1, &xSleepHandle, GLOBAL_CPU_CORE_0
     // );
 
     // xTaskPublishStats = xTaskCreatePinnedToCore(
-    //     task_publish_handler, "PublishScan", GLOBAL_STACK_SIZE, 
+    //     task_publish_handler, "PublishScan", GLOBAL_STACK_SIZE,
     //     NULL, 2, &xPublishHandle, GLOBAL_CPU_CORE_0
     // );
 
@@ -300,22 +313,23 @@ void task_master_handler(void* pvParameters) {
         // ESP_LOGI("Master", " current state %s\n", State_Map[int(state)]);
         switch (state) {
             case Initial: {
-                if (sleep_wakeup_reason==ESP_SLEEP_WAKEUP_ULP) {
+                if (sleep_wakeup_reason == ESP_SLEEP_WAKEUP_ULP) {
                     num_knocks = stoi(nvs.get("num_knocks"));
                     ++num_knocks;
                     nvs.set("num_knocks", std::to_string(num_knocks));
                     nvs.commit();
-                    // Create tasks that are blocked but higher importance than master loop
+                    // Create tasks that are blocked but higher importance than master
+                    // loop
                     xTaskFobHandle = xTaskCreatePinnedToCore(
-                        task_fob_handler, "FobHandle", GLOBAL_STACK_SIZE, nullptr, 1, &xFobHandle, GLOBAL_CPU_CORE_0
-                    );
+                        task_fob_handler, "FobHandle", GLOBAL_STACK_SIZE, nullptr, 1,
+                        &xFobHandle, GLOBAL_CPU_CORE_0);
                 } else {
                     xSemaphoreTake(task_queue_sem, (TickType_t)0);
                 }
 
                 xTaskAPIReturned = xTaskCreatePinnedToCore(
-                    task_scan_handler, "APIScan", GLOBAL_STACK_SIZE, &api, 1, &xAPIHandle, GLOBAL_CPU_CORE_0
-                );
+                    task_scan_handler, "APIScan", GLOBAL_STACK_SIZE, &api, 1, &xAPIHandle,
+                    GLOBAL_CPU_CORE_0);
 
                 // Release Tasks
                 xSemaphoreTake(task_queue_sem, (TickType_t)0);
@@ -324,8 +338,9 @@ void task_master_handler(void* pvParameters) {
                 break;
             }
             case HandleRequests: {
-                // ESP_LOGI("Master", " number tasks remaining %i\n", uxSemaphoreGetCount(task_queue_sem));
-                if ( uxSemaphoreGetCount(task_queue_sem) < 1) {
+                // ESP_LOGI("Master", " number tasks remaining %i\n",
+                // uxSemaphoreGetCount(task_queue_sem));
+                if (uxSemaphoreGetCount(task_queue_sem) < 1) {
                     if (xTaskFobHandle == pdTRUE) {
                         ESP_LOGI("Master", " deleting fob task\n");
                         vTaskDelete(xFobHandle);
@@ -339,19 +354,22 @@ void task_master_handler(void* pvParameters) {
             }
             case StatPublishing: {
                 task_publish_handler(nullptr);
+                xWaitStartTime = xTaskGetTickCount();
                 state = Waiting;
-                
+                ble.disconnectFromFob();
+                ble.startServer();
                 break;
             }
-            case Waiting: { // make this wait after 15 seconds from start
-                if ( xTaskGetTickCount() - xFunctionStartTime > pdMS_TO_TICKS(15000)) {
+            case Waiting: {  // make this wait after 15 seconds from when waiting began
+                if (xTaskGetTickCount() - xWaitStartTime > pdMS_TO_TICKS(15000)) {
                     state = Sleeping;
                 }
                 break;
             }
             case Sleeping: {
+                stepper_lock_helper(MessageType::LOCK);
+                // TODO: lock the lock before going to sleep
                 task_sleep_handler(&sleep_wrapper);
-                // xSemaphoreGive(task_sleep_sem);
                 break;
             }
             default: {
@@ -362,27 +380,27 @@ void task_master_handler(void* pvParameters) {
 
         vTaskDelayUntil(&xLastWakeTime, pdMS_TO_TICKS(100));  // Scan every 0.1 s
     }
-    
 }
 
 void task_fob_handler(void* pvParameters) {
     configASSERT(pvParameters == nullptr);
-    
-    while (uxSemaphoreGetCount(task_queue_sem) == GLOBAL_MAX_NUMBER_TASKS) {
-        vTaskDelay(200); // Block until released
+
+    while (uxSemaphoreGetCount(task_queue_sem) > 1) {
+        vTaskDelay(200);  // Block until released
     }
 
-    if(fa.doAuth(ble)) {
+    if (fa.doAuth(ble)) {
         ESP_LOGI("BLE", "Auth successful!!");
-        stepper.set_next_degrees(90);
-        task_motor_handler(nullptr);
+        stepper_lock_helper(MessageType::NONE);
     } else {
         ESP_LOGI("BLE", "Auth failed");
     }
 
     ESP_LOGI("BLE", "Fob task completed\n");
-    xSemaphoreTake(task_queue_sem, (TickType_t) 0); // Task completed
-    for(;;) { vTaskDelay(pdMS_TO_TICKS(30000)); }   // Dont do anything for 15 seconds until task destruction
+    xSemaphoreTake(task_queue_sem, (TickType_t)0);  // Task completed
+    for (;;) {
+        vTaskDelay(pdMS_TO_TICKS(30000));
+    }  // Dont do anything for 15 seconds until task destruction
 }
 
 void task_motor_handler(void* pvParameters) {
@@ -392,8 +410,8 @@ void task_motor_handler(void* pvParameters) {
     //     while(xSemaphoreTake(task_move_motor_sem, ( TickType_t ) 0) != pdTRUE) {
     //         vTaskDelay(pdMS_TO_TICKS(10));
     //     }
-        ESP_LOGI("SmartKnock", " Moving motor %i degrees\n", stepper.get_next_degrees());
-        stepper.move_motor(stepper.get_next_degrees());
+    ESP_LOGI("SmartKnock", " Moving motor %i degrees\n", stepper.get_next_degrees());
+    stepper.move_motor(stepper.get_next_degrees());
     // }
 }
 
@@ -405,8 +423,9 @@ void task_publish_handler(void* pvParameters) {
     // }
     int num_knocks = stoi(nvs.get("num_knocks"));
     float battery_voltage = adc.read_channels(ADC1_CHANNEL_5);
-    ESP_LOGI("SmartKnock", " number knocks %i, battery voltage %0.5f\n", num_knocks, battery_voltage);
-    
+    ESP_LOGI("SmartKnock", " number knocks %i, battery voltage %0.5f\n", num_knocks,
+             battery_voltage);
+
     std::string passphrase = nvs.get("passphrase");
     api.send_message(passphrase, {battery_voltage, num_knocks});
     // xSemaphoreTake(task_queue_sem, (TickType_t) 0);
@@ -427,7 +446,7 @@ void task_sleep_handler(void* pvParameters) {
     // Begins sleep mode after all processes are finished
     ESP_LOGI("SmartKnock", " Beginning sleep mode\n");
     adc.disconnect();
-     /* Initialize ULP monitoring config pins */
+    /* Initialize ULP monitoring config pins */
     ULPConfig ulp_config = {GPIO_NUM_27, GPIO_NUM_13};
     ulp.enable_ulp_monitoring(ulp_config);
     ulp.start_ulp_monitoring();
@@ -445,7 +464,7 @@ void task_scan_handler(void* pvParameters) {
     SmartKnockAPI* api_handle = static_cast<SmartKnockAPI*>(pvParameters);
 
     while (uxSemaphoreGetCount(task_queue_sem) == GLOBAL_MAX_NUMBER_TASKS) {
-        vTaskDelay(200); // Block until released
+        vTaskDelay(200);  // Block until released
     }
     xLastWakeTime = xTaskGetTickCount();
 
@@ -457,22 +476,70 @@ void task_scan_handler(void* pvParameters) {
         m = api_handle->get_incoming_message(passphrase);
         if (m == MessageType::LOCK) {
             ESP_LOGI("SmartKnock", "LOCK message received\n");
-            stepper.set_next_degrees(-120);
-            task_motor_handler(nullptr);
             // xSemaphoreGive(task_move_motor_sem); // releases motor handler task
-            vTaskDelay(pdMS_TO_TICKS(1000));
+            stepper_lock_helper(m);
         } else if (m == MessageType::UNLOCK) {
             ESP_LOGI("SmartKnock", "UNLOCK message received\n");
-            stepper.set_next_degrees(120);
-            task_motor_handler(nullptr);
             // xSemaphoreGive(task_move_motor_sem); // releases motor handler task
-            vTaskDelay(pdMS_TO_TICKS(1000));
+            stepper_lock_helper(m);
         }
     } while (m != MessageType::NONE);
 
     xSemaphoreTake(task_queue_sem, (TickType_t)0);
     ESP_LOGI("SmartKnock", "API task completed\n");
     for (;;) {
-        vTaskDelayUntil(&xLastWakeTime, pdMS_TO_TICKS(30000));  // Wait for 30 seconds until task is deleted
+        vTaskDelayUntil(
+            &xLastWakeTime,
+            pdMS_TO_TICKS(30000));  // Wait for 30 seconds until task is deleted
     }
+}
+
+void stepper_lock_helper(MessageType m) {
+    // If MessageType is NONE, toggle the state of the lock
+    // If it's LOCK, lock the door if it's currently unlocked and update the state
+    // If it's UNLOCK, unlock the door if it's currently locked and update the state
+    int lock_state = SMARTKNOCK_LOCK_STATE;
+    if (nvs.exists(SMARTKNOCK_STATE_KEY)) {
+        lock_state = nvs.get<int>(SMARTKNOCK_STATE_KEY);
+    }
+
+    int new_lock_state = lock_state;
+    
+    if (m == MessageType::NONE) {
+        // Toggle lock position if activated from fob
+        if (lock_state == SMARTKNOCK_LOCK_STATE) {
+            stepper.set_next_degrees(LOCK_TO_UNLOCK_ANGLE);
+            new_lock_state = SMARTKNOCK_UNLOCK_STATE;
+        } else {
+            stepper.set_next_degrees(UNLOCK_TO_LOCK_ANGLE);
+            new_lock_state = SMARTKNOCK_LOCK_STATE;
+        }
+
+    } else {
+        // From api
+        if (lock_state == SMARTKNOCK_UNLOCK_STATE) {
+            // Lock
+            if (m == MessageType::LOCK) {
+                ESP_LOGI("SmartKnock", "Lock was unlocked, now locking it\n");
+                stepper.set_next_degrees(UNLOCK_TO_LOCK_ANGLE);
+                new_lock_state = SMARTKNOCK_LOCK_STATE;
+            } else if (m == MessageType::UNLOCK) {
+                ESP_LOGI("SmartKnock", "Lock was unlocked, not doing anything\n");
+            }
+        }
+        else if (lock_state == SMARTKNOCK_LOCK_STATE) {
+            // Unlock
+            if (m == MessageType::UNLOCK) {
+                ESP_LOGI("SmartKnock", "Lock was locked, now unlocking it\n");
+                stepper.set_next_degrees(LOCK_TO_UNLOCK_ANGLE);
+                new_lock_state = SMARTKNOCK_UNLOCK_STATE;
+            } else if (m == MessageType::LOCK) {
+                ESP_LOGI("SmartKnock", "Lock was locked, not doing anything\n");
+            }
+        }
+    }
+    // Store new_lock_state in NVS
+    nvs.set(SMARTKNOCK_STATE_KEY, new_lock_state);
+    task_motor_handler(nullptr);
+    vTaskDelay(pdMS_TO_TICKS(1000));
 }

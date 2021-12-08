@@ -71,6 +71,13 @@ void BLE::stopServer() { server->getAdvertising()->stop(); }
 
 SemaphoreHandle_t BLE::fobScanSemaphore = nullptr;
 
+void BLE::disconnectFromFob() {
+    if (client != nullptr) {
+        client->disconnect();
+        client = nullptr;
+    }
+}
+
 bool BLE::connectToFob() {
     
     /*
