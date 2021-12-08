@@ -72,6 +72,7 @@ void BLE::stopServer() { server->getAdvertising()->stop(); }
 SemaphoreHandle_t BLE::fobScanSemaphore = nullptr;
 
 bool BLE::connectToFob() {
+    
     /*
     // Scan for Fob and connect if possible. If not found within a timeout, return false.
     scan = NimBLEDevice::getScan();
@@ -99,8 +100,8 @@ bool BLE::connectToFob() {
     // client->setConnectionParams(12, 80, 25, 51);
     // client->setClientCallbacks(&);
 
-    // NimBLEAddress fobAddressFixed("db:71:98:e6:84:c4", 1);
-    NimBLEAddress fobAddressFixed("f8:09:66:36:7d:09", 1); // dev board in lab
+    NimBLEAddress fobAddressFixed("db:71:98:e6:84:c4", 1);
+    // NimBLEAddress fobAddressFixed("f8:09:66:36:7d:09", 1); // dev board in lab
     
 
     if (!client->connect(fobAddressFixed)) { 
