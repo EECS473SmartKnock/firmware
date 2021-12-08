@@ -89,12 +89,19 @@ bool BLE::connectToFob() {
         ESP_LOGE("BLE", "Fob not found, device wasn't set");
         return false;
     }
-    ESP_LOGI("BLE", "Connecting to Fob");*/
+    NimBLEAddress fobAddressFixed = fobDevice->getAddress();
+    */
+
+    
+    ESP_LOGI("BLE", "Connecting to Fob");
 
     client = NimBLEDevice::createClient();
+    // client->setConnectionParams(12, 80, 25, 51);
     // client->setClientCallbacks(&);
 
-    NimBLEAddress fobAddressFixed("db:71:98:e6:84:c4", 1);
+    // NimBLEAddress fobAddressFixed("db:71:98:e6:84:c4", 1);
+    NimBLEAddress fobAddressFixed("f8:09:66:36:7d:09", 1); // dev board in lab
+    
 
     if (!client->connect(fobAddressFixed)) { 
     //if(!client->connect(fobDevice)) {

@@ -40,9 +40,10 @@ enum Master_State {
     BleAuth,
     TaskScanning,
     StatPublishing,
+    Waiting,
     Sleeping
 };
-static const char * State_Map[] = { "Initial", "BleAuth", "TaskScanning", "StatPublishing", "Sleeping" };
+static const char * State_Map[] = { "Initial", "BleAuth", "TaskScanning", "StatPublishing", "Waiting", "Sleeping" };
 
 SemaphoreHandle_t task_queue_sem;
 SemaphoreHandle_t task_sleep_sem;
@@ -78,7 +79,7 @@ void app_main() {
     /* ------ BLE Fob test ---------- */
     // Comment below out if you dont have fob
     
-    ble.init();
+    // ble.init();
 
     /*while (!ble.connectToFob());
     ble.fobWrite((const uint8_t*)"Hello world! This needs to be at least 64 bytes !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!");
@@ -86,21 +87,21 @@ void app_main() {
     ble.fobRecv(buffer);
     ESP_LOGI("BLE", "Received: %s", buffer);*/
 
-    MotorConfig stepper_pins = {
-        GPIO_NUM_17,
-        GPIO_NUM_18,
-        GPIO_NUM_21,
-        GPIO_NUM_22, 
-        GPIO_NUM_19
-    };
-    stepper.config(stepper_pins);
-    if(fa.doAuth(ble)) {
-        ESP_LOGE("BLE", "Auth successful!!");
-        stepper.set_next_degrees(90);
-        task_motor_handler(nullptr);
-    } else {
-        ESP_LOGE("BLE", "Auth failed");
-    }
+    // MotorConfig stepper_pins = {
+    //     GPIO_NUM_17,
+    //     GPIO_NUM_18,
+    //     GPIO_NUM_21,
+    //     GPIO_NUM_22, 
+    //     GPIO_NUM_19
+    // };
+    // stepper.config(stepper_pins);
+    // if(fa.doAuth(ble)) {
+    //     ESP_LOGE("BLE", "Auth successful!!");
+    //     stepper.set_next_degrees(90);
+    //     task_motor_handler(nullptr);
+    // } else {
+    //     ESP_LOGE("BLE", "Auth failed");
+    // }
 
     //return;
     /* ------------------------------ */
@@ -111,16 +112,16 @@ void app_main() {
 
     // Uncomment below if you want to test wifi manually
     
-    std::string test_ssid = "CoLiberati0n";
-    std::string test_password = "CatH0use";
-    std::string test_passphrase = "CatH0use";
-    nvs.set("ssid", test_ssid);
-    nvs.set("password", test_password);
-    nvs.set("passphrase", test_passphrase);
-    nvs.commit();
-    std::string temp_pass = nvs.get("passphrase");
+    // std::string test_ssid = "ArthurZhang";
+    // std::string test_password = "arthurthes";
+    // std::string test_passphrase = "CatH0use";
+    // nvs.set("ssid", test_ssid);
+    // nvs.set("password", test_password);
+    // nvs.set("passphrase", test_passphrase);
+    // nvs.commit();
+    // std::string temp_pass = nvs.get("passphrase");
 
-    ESP_LOGI("SmartKnock", "passphrase %s ", temp_pass.c_str());
+    // ESP_LOGI("SmartKnock", "passphrase %s ", temp_pass.c_str());
     
 
     /*
@@ -211,6 +212,8 @@ void app_main() {
         ESP_LOGI("SmartKnock", "Reset requested");
         esp_restart();
     };
+
+    ble.startServer();
 
     if (sleep_wrapper.is_wakeup_by_reset()) {
         // Reset NVS if it was a wakeup by reset (not from deep sleep)
@@ -315,13 +318,13 @@ void task_master_handler(void* pvParameters) {
                 ++num_knocks;
                 nvs.set("num_knocks", std::to_string(num_knocks));
                 nvs.commit();
-                // if(fa.doAuth(ble)) {
-                //     ESP_LOGI("BLE", "Auth successful!!");
-                //     stepper.set_next_degrees(90);
-                //     xSemaphoreGive(task_move_motor_sem); // releases motor handler task
-                // } else {
-                //     ESP_LOGI("BLE", "Auth failed");
-                // }
+                if(fa.doAuth(ble)) {
+                    ESP_LOGI("BLE", "Auth successful!!");
+                    stepper.set_next_degrees(90);
+                    task_motor_handler(nullptr);
+                } else {
+                    ESP_LOGI("BLE", "Auth failed");
+                }
 
                 state = TaskScanning;
                 break;
@@ -336,11 +339,16 @@ void task_master_handler(void* pvParameters) {
             }
             case StatPublishing: {
                 task_publish_handler(nullptr);
-                state = Sleeping;
+                state = Waiting;
                 // if (uxSemaphoreGetCount(task_queue_sem) < 1) {
                 //     state = Sleeping;
                 // }
                 
+                break;
+            }
+            case Waiting: {
+                vTaskDelayUntil(&xLastWakeTime, pdMS_TO_TICKS(15 * 1000));
+                state = Sleeping;
                 break;
             }
             case Sleeping: {
@@ -354,7 +362,7 @@ void task_master_handler(void* pvParameters) {
             }
         }
 
-        vTaskDelayUntil(&xLastWakeTime, pdMS_TO_TICKS(250));  // Scan every 0.25 s
+        vTaskDelayUntil(&xLastWakeTime, pdMS_TO_TICKS(10));  // Scan every 0.25 s
     }
     
 }
