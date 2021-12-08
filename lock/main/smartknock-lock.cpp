@@ -86,10 +86,18 @@ void app_main() {
     ble.fobRecv(buffer);
     ESP_LOGI("BLE", "Received: %s", buffer);*/
 
+    MotorConfig stepper_pins = {
+        GPIO_NUM_17,
+        GPIO_NUM_18,
+        GPIO_NUM_21,
+        GPIO_NUM_22, 
+        GPIO_NUM_19
+    };
+    stepper.config(stepper_pins);
     if(fa.doAuth(ble)) {
         ESP_LOGE("BLE", "Auth successful!!");
-        //stepper.set_next_degrees(90);
-        //task_motor_handler(nullptr)
+        stepper.set_next_degrees(90);
+        task_motor_handler(nullptr);
     } else {
         ESP_LOGE("BLE", "Auth failed");
     }
