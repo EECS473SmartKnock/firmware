@@ -110,11 +110,12 @@ bool BLE::connectToFob() {
     NimBLEAddress fobAddressFixed("db:71:98:e6:84:c4", 1);
     // NimBLEAddress fobAddressFixed("f8:09:66:36:7d:09", 1); // dev board in lab
     
-
-    if (!client->connect(fobAddressFixed)) { 
+    int num_retries = 0;
+    client->setConnectTimeout(5);
+    while (!client->connect(fobAddressFixed) && num_retries++ < 5) { 
     //if(!client->connect(fobDevice)) {
-        ESP_LOGE("BLE", "Fob connection failed");
-        return false;
+        ESP_LOGE("BLE", "Fob connection failed, num_retries %d", num_retries);
+        // return false;
     }
 
     if (!client->isConnected()) {

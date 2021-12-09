@@ -36,8 +36,8 @@ static constexpr const char* SMARTKNOCK_STATE_KEY = "lock_state";
 static constexpr const int SMARTKNOCK_LOCK_STATE = 0;
 static constexpr const int SMARTKNOCK_UNLOCK_STATE = 1;
 
-static constexpr const int LOCK_TO_UNLOCK_ANGLE = 120;
-static constexpr const int UNLOCK_TO_LOCK_ANGLE = -120;
+static constexpr const int LOCK_TO_UNLOCK_ANGLE = -200;
+static constexpr const int UNLOCK_TO_LOCK_ANGLE = 300;
 
 void stepper_lock_helper(MessageType m = MessageType::NONE);
 
@@ -356,7 +356,6 @@ void task_master_handler(void* pvParameters) {
                 task_publish_handler(nullptr);
                 xWaitStartTime = xTaskGetTickCount();
                 state = Waiting;
-                ble.disconnectFromFob();
                 ble.startServer();
                 break;
             }
@@ -368,7 +367,7 @@ void task_master_handler(void* pvParameters) {
             }
             case Sleeping: {
                 stepper_lock_helper(MessageType::LOCK);
-                // TODO: lock the lock before going to sleep
+                vTaskDelay(pdMS_TO_TICKS(5000)); // wait 5 seconds before sleeping so that we don't wake ourselves up from doing the final lock
                 task_sleep_handler(&sleep_wrapper);
                 break;
             }
@@ -478,10 +477,12 @@ void task_scan_handler(void* pvParameters) {
             ESP_LOGI("SmartKnock", "LOCK message received\n");
             // xSemaphoreGive(task_move_motor_sem); // releases motor handler task
             stepper_lock_helper(m);
+            xSemaphoreTake(task_queue_sem, (TickType_t)0);
         } else if (m == MessageType::UNLOCK) {
             ESP_LOGI("SmartKnock", "UNLOCK message received\n");
             // xSemaphoreGive(task_move_motor_sem); // releases motor handler task
             stepper_lock_helper(m);
+            xSemaphoreTake(task_queue_sem, (TickType_t)0);
         }
     } while (m != MessageType::NONE);
 
@@ -525,6 +526,7 @@ void stepper_lock_helper(MessageType m) {
                 new_lock_state = SMARTKNOCK_LOCK_STATE;
             } else if (m == MessageType::UNLOCK) {
                 ESP_LOGI("SmartKnock", "Lock was unlocked, not doing anything\n");
+                stepper.set_next_degrees(0);
             }
         }
         else if (lock_state == SMARTKNOCK_LOCK_STATE) {
@@ -535,6 +537,7 @@ void stepper_lock_helper(MessageType m) {
                 new_lock_state = SMARTKNOCK_UNLOCK_STATE;
             } else if (m == MessageType::LOCK) {
                 ESP_LOGI("SmartKnock", "Lock was locked, not doing anything\n");
+                stepper.set_next_degrees(0);
             }
         }
     }
