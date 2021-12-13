@@ -1,0 +1,1 @@
+NOTE: requires that BigDigits library (https://www.di-mgt.com.au/bigdigits.html) be placed in lib/BigDigits/src, so file structure should look like ./lib/BigDigits/src/bigd.h, etc.
