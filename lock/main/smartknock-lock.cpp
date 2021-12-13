@@ -37,7 +37,7 @@ static constexpr const int SMARTKNOCK_LOCK_STATE = 0;
 static constexpr const int SMARTKNOCK_UNLOCK_STATE = 1;
 
 static constexpr const int LOCK_TO_UNLOCK_ANGLE = -200;
-static constexpr const int UNLOCK_TO_LOCK_ANGLE = 300;
+static constexpr const int UNLOCK_TO_LOCK_ANGLE = 200;
 
 void stepper_lock_helper(MessageType m = MessageType::NONE);
 
